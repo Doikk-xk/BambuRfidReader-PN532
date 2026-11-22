@@ -266,8 +266,3 @@ Normal 模式（mode=`0x01`）才能寻卡。
 - HC 方案：`FF00` / `FF01`(notify) / `FF02`(write + notify)
 - 实测该模块 `Minicopy(BLE)` 用的是 HC 方案
 - `FF02` 自带 notify 属性，但订阅它会报 `Write Not Permitted`，只能作为写入特征
-
-### 6. 写卡尚未闭环
-当前卡片所有扇区 trailer 相同：`00×6 | 87 87 87 69 | 00×6`
-（KeyA 仅读权限，写操作需要 KeyB `0x61`）。
-写块第一步 `0xA0` 仍返回超时 `0x7F`，时序变体均未成功 —— **写卡路径还没跑通**。
