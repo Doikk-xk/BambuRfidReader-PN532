@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">M0 RFID</string>
+    <string name="app_name">M0 RFID PN532</string>
     <string name="app_title">m0h31h31 RFID</string>
     <string name="user_agreement_title">Software Use Agreement</string>
     <string name="user_agreement_summary">On first install, you must read and accept the agreement below before using the app.</string>
@@ -329,7 +329,7 @@
     <string name="palette_desert">Desert Yellow</string>
     <string name="misc_save_keys">Save keys to file</string>
     <string name="misc_read_all_title">Read All Data Notice</string>
-    <string name="misc_read_all_message">Reading all data will slow scanning down. Files will be saved under Android/data/com.m0h31h31.bamburfidreader/rfid_file/self_xxxxx. Enable it?</string>
+    <string name="misc_read_all_message">Reading all data will slow scanning down. Files will be saved under Android/data/com.m0h31h31.bamburfidreader.pn532/rfid_file/self_xxxxx. Enable it?</string>
     <string name="misc_import_db_title">Import Database</string>
     <string name="misc_import_db_message">Importing the database will overwrite the current local filament database. Continue?</string>
     <string name="misc_confirm_import">Import</string>
@@ -1048,4 +1048,30 @@
     <string name="cloud_region_global">国际站</string>
     <string name="cloud_status_verify_email_required">Please check your email for the verification code and enter it below.</string>
     <string name="cloud_login_password_help">If you forgot your password or do not know it, go to your personal settings on MakerWorld to reset or set a password, then log in again.</string>
+    <string name="bt_section_title">蓝牙 PN532 读卡器</string>
+    <string name="bt_enable_label">使用蓝牙 PN532 读卡</string>
+    <string name="bt_enable_hint">开启后忽略手机 NFC，改为连接外接 PN532 模块读卡</string>
+    <string name="bt_scan_devices">选择已配对设备</string>
+    <string name="bt_no_paired_devices">没有已配对的蓝牙设备，请先在系统蓝牙设置中配对 PN532 模块</string>
+    <string name="bt_disconnect">断开蓝牙连接</string>
+    <string name="bt_status_label">连接状态</string>
+    <string name="bt_device_label">设备</string>
+    <string name="bt_permission_denied">蓝牙权限被拒绝，无法连接 PN532</string>
+    <string name="bt_not_supported">本机不支持蓝牙</string>
+    <string name="bt_disabled_hint">请先在系统设置中开启蓝牙</string>
+    <string name="bt_device_not_found">未找到该蓝牙设备，请重新配对</string>
+    <string name="bt_connecting_format">正在连接 %1$s…</string>
+    <string name="bt_connect_failed_format">蓝牙连接失败：%1$s</string>
+    <string name="bt_pn532_init_failed_format">PN532 初始化失败：%1$s</string>
+    <string name="bt_connected_format">已连接 PN532（%1$s）</string>
+    <string name="bt_disconnected">蓝牙已断开</string>
+    <string name="bt_reading_hint">请将标签靠近 PN532 感应区</string>
+    <!-- 蓝牙主动扫描 -->
+    <string name="bt_scan_action">扫描蓝牙设备</string>
+    <string name="bt_scanning">正在扫描周边设备…</string>
+    <string name="bt_scan_no_devices">未发现设备，请确认 PN532 模块已上电并处于可发现状态</string>
+    <string name="bt_scan_done_format">扫描完成，发现 %1$d 个设备</string>
+    <string name="bt_scan_failed">无法启动扫描，请检查蓝牙与权限</string>
+    <string name="bt_scan_failed_but_paired">无法启动自动扫描，可直接在下方选择已配对设备连接</string>
+    <string name="bt_no_devices_found">暂无设备，点上方按钮扫描或先在系统设置中配对</string>
 </resources>

@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.m0h31h31.bamburfidreader"
+        applicationId = "com.m0h31h31.bamburfidreader.pn532"
         minSdk = 28
         targetSdk = 36
         versionCode = 324

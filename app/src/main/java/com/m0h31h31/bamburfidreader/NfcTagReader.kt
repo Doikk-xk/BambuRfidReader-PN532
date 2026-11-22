@@ -1,8 +1,8 @@
 package com.m0h31h31.bamburfidreader
 
 import android.content.Context
-import android.nfc.Tag
 import com.m0h31h31.bamburfidreader.nfc.BambuMifareOperator
+import com.m0h31h31.bamburfidreader.nfc.MifareCard
 import com.m0h31h31.bamburfidreader.nfc.BambuNfcFailureReason
 import com.m0h31h31.bamburfidreader.nfc.BambuNfcOperation
 import com.m0h31h31.bamburfidreader.nfc.BambuNfcResult
@@ -58,7 +58,7 @@ sealed class RawTagReadResult {
 
 object NfcTagReader {
     fun readRaw(
-        tag: Tag,
+        card: MifareCard,
         readAllSectors: Boolean,
         context: Context,
         compatibilityConfig: NfcCompatibilityConfig = NfcCompatibilityConfig.default(),
@@ -66,7 +66,7 @@ object NfcTagReader {
         appendLog: (String, String) -> Unit
     ): RawTagReadResult {
         return when (val result = BambuMifareOperator.run(
-            tag = tag,
+            card = card,
             config = compatibilityConfig,
             operation = BambuNfcOperation.ReadRaw(readAllSectors),
             context = context,

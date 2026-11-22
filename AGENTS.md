@@ -17,16 +17,19 @@ Confirmed platform constraints:
 - Minimum SDK: 28
 - Target SDK: 36
 - Compile SDK: 36
-- Manifest requires NFC hardware and uses `android.nfc.action.TECH_DISCOVERED`
-- The NFC implementation uses `android.nfc.tech.MifareClassic`
+- Manifest marks NFC hardware as **optional** (`required="false"`); app supports two read sources
+- The phone-NFC implementation uses `android.nfc.tech.MifareClassic`
+- The external-reader implementation uses Bluetooth SPP + PN532 HSU frames (bluetooth/ package)
 
 ## Architecture
 
 The main Android flow is:
 
 ```text
-NFC Tag
-  -> MainActivity.NfcAdapter.ReaderCallback
+Phone NFC Tag  --or--  Bluetooth PN532 detected tag
+  -> MainActivity.readerCallback (NFC) / pn532 polling thread (Bluetooth)
+  -> CardHandle(uid, MifareCard, source)
+  -> MainActivity.processCard(card, source)   [shared by both sources]
   -> brand-specific pending task handling or read path
   -> NfcTagReader.readRaw() for Bambu/Mifare Classic raw reads
   -> NfcTagProcessor.parseAndPersist() for Bambu parsing and inventory writes
@@ -59,6 +62,15 @@ Key components:
   - Remote config, HTTP helpers, analytics/update/reporting, and tag sharing.
 - `app/src/main/java/com/m0h31h31/bamburfidreader/util/`
   - Small utility helpers for colors and TTS settings.
+- `app/src/main/java/com/m0h31h31/bamburfidreader/nfc/MifareCard.kt`
+  - Unified card I/O abstraction (`MifareCard`, `NfcMifareCard`, `CardHandle`, `CardSource`).
+    Both read sources implement `MifareCard`; auth/reconnect/format logic in
+    `MifareClassicSession` and `BambuMifareOperator` is unchanged.
+- `app/src/main/java/com/m0h31h31/bamburfidreader/bluetooth/`
+  - `Pn532Protocol.kt`: PN532 HSU frame codec (checksum, not CRC) + command builder.
+  - `BluetoothSppClient.kt`: classic Bluetooth SPP connection management.
+  - `Pn532MifareCard.kt`: `MifareCard` via PN532 InDataExchange.
+  - `Pn532Manager.kt`: PN532 init (firmware/SAM) + passive target polling -> `CardHandle`.
 
 Uncertain/local-only:
 - A `server/` directory exists in the local workspace and contains a FastAPI

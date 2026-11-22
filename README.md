@@ -19,9 +19,11 @@ Supports **Bambu Lab**, **Creality**, and **Snapmaker** filament tags.
 ## ✅ Requirements
 
 - Android 9.0+
-- NFC with **Mifare Classic** read/write support
+- **One of** the following read sources:
+  - Phone NFC with **Mifare Classic** read/write support (default), **or**
+  - External **PN532 module + Bluetooth SPP transparent module** (HC-05/06/08 etc.), selected in *Misc → Bluetooth PN532 Reader*
 
-> Most mid-range and flagship Android phones support Mifare Classic. Some phones (e.g. certain Pixel and Samsung models) may only support detection but not full read/write due to hardware limitations.
+> Most mid-range and flagship Android phones support Mifare Classic. Some phones (e.g. certain Pixel and Samsung models) may only support detection but not full read/write due to hardware limitations. The Bluetooth PN532 option is an alternative read source for those cases; pair the module in system Bluetooth settings first, then connect it inside the app.
 
 ---
 

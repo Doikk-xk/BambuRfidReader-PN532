@@ -1,6 +1,5 @@
 package com.m0h31h31.bamburfidreader.nfc
 
-import android.nfc.tech.MifareClassic
 
 object MifareClassicSession {
     enum class AuthKeyType {
@@ -60,7 +59,7 @@ object MifareClassicSession {
     fun isStaleTagException(error: Throwable): Boolean = isStaleErrorKind(classifyError(error))
 
     fun authenticateSectorWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorIndex: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>,
@@ -90,7 +89,7 @@ object MifareClassicSession {
     }
 
     fun authenticateSectorWithRetryDetailed(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorIndex: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>,
@@ -151,7 +150,7 @@ object MifareClassicSession {
     }
 
     fun ensureConnected(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         reconnectDelayMs: Long,
         mifareTimeoutMs: Int = 0,
         postConnectDelayMs: Long = 0L,
@@ -166,7 +165,7 @@ object MifareClassicSession {
     }
 
     fun reconnect(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         reconnectDelayMs: Long,
         mifareTimeoutMs: Int = 0,
         postConnectDelayMs: Long = 0L,
@@ -189,7 +188,7 @@ object MifareClassicSession {
     }
 
     fun applyTimeout(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         mifareTimeoutMs: Int,
         appendLog: (String, String) -> Unit = { _, _ -> }
     ) {
@@ -202,7 +201,7 @@ object MifareClassicSession {
     }
 
     private fun authenticateInterleavedByIndex(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorIndex: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>,
@@ -252,7 +251,7 @@ object MifareClassicSession {
     }
 
     private fun authenticateAllAThenAllB(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorIndex: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>,

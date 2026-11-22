@@ -1531,6 +1531,15 @@ fun MiscScreen(
     isDownloadingUpdate: Boolean = false,
     onStartUpdate: (com.m0h31h31.bamburfidreader.utils.UpdateInfo) -> Unit = {},
     onDismissUpdate: () -> Unit = {},
+    bluetoothReaderEnabled: Boolean = false,
+    bluetoothConnectedDevice: String = "",
+    bluetoothStatusMessage: String = "",
+    bluetoothPairedDevices: List<Pair<String, String>> = emptyList(),
+    bluetoothScanning: Boolean = false,
+    onBluetoothScan: () -> Unit = {},
+    onBluetoothReaderEnabledChange: (Boolean) -> Unit = {},
+    onBluetoothDeviceConnect: (String) -> Unit = {},
+    onBluetoothDisconnect: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1827,6 +1836,18 @@ fun MiscScreen(
                     .padding(bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+
+                BluetoothReaderPanel(
+                    enabled = bluetoothReaderEnabled,
+                    connectedDevice = bluetoothConnectedDevice,
+                    statusMessage = bluetoothStatusMessage,
+                    pairedDevices = bluetoothPairedDevices,
+                    scanning = bluetoothScanning,
+                    onScan = onBluetoothScan,
+                    onEnabledChange = onBluetoothReaderEnabledChange,
+                    onConnectDevice = onBluetoothDeviceConnect,
+                    onDisconnect = onBluetoothDisconnect
+                )
 
                 NeuPanel(modifier = Modifier.fillMaxWidth()) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {

@@ -1,8 +1,6 @@
 package com.m0h31h31.bamburfidreader.nfc
 
 import android.content.Context
-import android.nfc.Tag
-import android.nfc.tech.MifareClassic
 import androidx.annotation.StringRes
 import com.m0h31h31.bamburfidreader.R
 import com.m0h31h31.bamburfidreader.RawTagReadData
@@ -91,7 +89,7 @@ object BambuFormatPlanner {
 
 object BambuMifareOperator {
     fun run(
-        tag: Tag,
+        card: MifareCard,
         config: NfcCompatibilityConfig,
         operation: BambuNfcOperation,
         context: Context,
@@ -99,10 +97,7 @@ object BambuMifareOperator {
         appendLog: (String, String) -> Unit = { _, _ -> },
         onStatus: (String) -> Unit = {}
     ): BambuNfcResult {
-        val uid = tag.id ?: return BambuNfcResult.Failure(
-            message = context.nfcText(R.string.bambu_nfc_uid_missing),
-            reason = BambuNfcFailureReason.UID_MISSING
-        )
+        val uid = card.uid
         val uidHex = uid.toHex()
         val sectorKeys = runCatching { deriveBambuKeys(uid) }.getOrElse { error ->
             return BambuNfcResult.Failure(
@@ -123,17 +118,7 @@ object BambuMifareOperator {
             Thread.sleep(config.postKeyDerivationDelayMs)
         }
 
-        val mifare = MifareClassic.get(tag) ?: return BambuNfcResult.Failure(
-            message = context.nfcText(
-                R.string.bambu_nfc_mifare_unsupported
-            ),
-            reason = BambuNfcFailureReason.MIFARE_UNSUPPORTED,
-            uidHex = uidHex,
-            keyA0Hex = keyA0Hex,
-            keyB0Hex = keyB0Hex,
-            keyA1Hex = keyA1Hex,
-            keyB1Hex = keyB1Hex
-        )
+        val mifare = card
 
         return try {
             mifare.connect()
@@ -248,7 +233,7 @@ object BambuMifareOperator {
     }
 
     private fun readRaw(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         uidHex: String,
         sectorKeys: List<Pair<ByteArray, ByteArray>>,
         readAllSectors: Boolean,
@@ -339,7 +324,7 @@ object BambuMifareOperator {
     }
 
     private fun formatToDefaultFf(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorKeys: List<Pair<ByteArray, ByteArray>>,
         config: NfcCompatibilityConfig,
         context: Context,
@@ -444,7 +429,7 @@ object BambuMifareOperator {
     }
 
     private fun resetTrailerToDefaultFf(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sector: Int,
         sectorKey: Pair<ByteArray, ByteArray>,
         config: NfcCompatibilityConfig,
@@ -479,7 +464,7 @@ object BambuMifareOperator {
     }
 
     private fun tryResetDefaultTrailerWithFf(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sector: Int,
         trailerBlock: Int,
         config: NfcCompatibilityConfig,
@@ -498,7 +483,7 @@ object BambuMifareOperator {
     }
 
     private fun writeDumpWithFf(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sourceBlocks: List<ByteArray?>,
         config: NfcCompatibilityConfig,
         context: Context,
@@ -588,7 +573,7 @@ object BambuMifareOperator {
     }
 
     private fun verifyDump(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sourceBlocks: List<ByteArray?>,
         config: NfcCompatibilityConfig,
         context: Context,
@@ -635,7 +620,7 @@ object BambuMifareOperator {
     }
 
     private fun authenticate(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sector: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>,
@@ -659,7 +644,7 @@ object BambuMifareOperator {
     }
 
     private fun readBlockWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         config: NfcCompatibilityConfig,
         context: Context,
@@ -703,7 +688,7 @@ object BambuMifareOperator {
     }
 
     private fun writeBlockWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         data: ByteArray,
         config: NfcCompatibilityConfig,
@@ -754,7 +739,7 @@ object BambuMifareOperator {
     }
 
     private fun readBlockWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         config: NfcCompatibilityConfig,
         context: Context,
@@ -767,7 +752,7 @@ object BambuMifareOperator {
         }
     }
 
-    private fun isTrailerBlock(mifare: MifareClassic, blockIndex: Int): Boolean {
+    private fun isTrailerBlock(mifare: MifareCard, blockIndex: Int): Boolean {
         val sector = mifare.blockToSector(blockIndex)
         val firstBlock = mifare.sectorToBlock(sector)
         return blockIndex == firstBlock + mifare.getBlockCountInSector(sector) - 1

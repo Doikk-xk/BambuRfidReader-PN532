@@ -224,6 +224,15 @@ fun AppNavigation(
     updateDownloadProgress: Int = 0,
     onStartUpdate: (com.m0h31h31.bamburfidreader.utils.UpdateInfo) -> Unit = {},
     onDismissUpdate: () -> Unit = {},
+    bluetoothReaderEnabled: Boolean = false,
+    bluetoothConnectedDevice: String = "",
+    bluetoothStatusMessage: String = "",
+    bluetoothPairedDevices: List<Pair<String, String>> = emptyList(),
+    bluetoothScanning: Boolean = false,
+    onBluetoothScan: () -> Unit = {},
+    onBluetoothReaderEnabledChange: (Boolean) -> Unit = {},
+    onBluetoothDeviceConnect: (String) -> Unit = {},
+    onBluetoothDisconnect: () -> Unit = {},
 ) {
     val resolvedUiStyle = LocalAppUiStyle.current
     val navController = rememberNavController()
@@ -726,7 +735,16 @@ fun AppNavigation(
                                 pendingUpdateInfo = pendingUpdateInfo,
                                 isDownloadingUpdate = isDownloadingUpdate,
                                 onStartUpdate = onStartUpdate,
-                                onDismissUpdate = onDismissUpdate
+                                onDismissUpdate = onDismissUpdate,
+                                bluetoothReaderEnabled = bluetoothReaderEnabled,
+                                bluetoothConnectedDevice = bluetoothConnectedDevice,
+                                bluetoothStatusMessage = bluetoothStatusMessage,
+                                bluetoothPairedDevices = bluetoothPairedDevices,
+                                bluetoothScanning = bluetoothScanning,
+                                onBluetoothScan = onBluetoothScan,
+                                onBluetoothReaderEnabledChange = onBluetoothReaderEnabledChange,
+                                onBluetoothDeviceConnect = onBluetoothDeviceConnect,
+                                onBluetoothDisconnect = onBluetoothDisconnect
                             )
                         }
         }

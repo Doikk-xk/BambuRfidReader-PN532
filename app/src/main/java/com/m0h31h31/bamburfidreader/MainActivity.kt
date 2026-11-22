@@ -12,7 +12,6 @@ import android.nfc.NfcAdapter
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
 import android.nfc.Tag
-import android.nfc.tech.MifareClassic
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -87,6 +86,11 @@ import com.m0h31h31.bamburfidreader.model.ShareTagItem
 import com.m0h31h31.bamburfidreader.model.SnapmakerShareTagItem
 import com.m0h31h31.bamburfidreader.model.SnapmakerTagData
 import com.m0h31h31.bamburfidreader.nfc.BambuMifareOperator
+import com.m0h31h31.bamburfidreader.nfc.MifareCard
+import com.m0h31h31.bamburfidreader.nfc.CardHandle
+import com.m0h31h31.bamburfidreader.nfc.CardSource
+import com.m0h31h31.bamburfidreader.bluetooth.BluetoothBleClient
+import com.m0h31h31.bamburfidreader.bluetooth.Pn532Manager
 import com.m0h31h31.bamburfidreader.nfc.BambuNfcOperation
 import com.m0h31h31.bamburfidreader.nfc.BambuNfcResult
 import com.m0h31h31.bamburfidreader.nfc.FormatTagBrand
@@ -566,6 +570,22 @@ class MainActivity : ComponentActivity() {
     // 防止共享目录重复并发扫描。
     private val shareLoadingInProgress = AtomicBoolean(false)
     private val shareLoadStatusRequested = AtomicBoolean(false)
+    // ── 蓝牙 PN532 读卡源 ────────────────────────────────────────────────────
+    private val bluetoothSpp by lazy { BluetoothBleClient(this) }
+    private val pn532Manager by lazy { Pn532Manager(bluetoothSpp) }
+    private var readerSourceBluetooth by mutableStateOf(false)
+    // 开关的显示状态：用户是否打开了"使用蓝牙 PN532"。与是否已连接设备解耦，
+    // 否则开关依赖连接成功后才置位的 readerSourceBluetooth，会出现"点了没反应"。
+    private var bluetoothReaderEnabled by mutableStateOf(false)
+    private var bluetoothStatusMessage by mutableStateOf("")
+    private var bluetoothConnectedDevice by mutableStateOf("")
+    private var bluetoothScanRequested by mutableStateOf(false)
+    private var bluetoothScanning by mutableStateOf(false)
+    private var bluetoothDiscoveredDevices by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    @Volatile
+    private var bluetoothPolling = false
+    private var bluetoothPollThread: Thread? = null
+
     private var toneGenerator: ToneGenerator? = null
     private val importTagPackageLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -670,11 +690,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private val readerCallback = NfcAdapter.ReaderCallback { tag ->
-        if (!readingInProgress.compareAndSet(false, true)) {
-            logEvent("读卡请求被忽略：上一次读卡尚未完成")
+        // 蓝牙 PN532 模式下忽略手机 NFC，避免两个读卡源互相干扰
+        if (readerSourceBluetooth) {
+            logEvent("蓝牙读卡模式，忽略手机 NFC 回调")
             return@ReaderCallback
         }
-        logEvent("收到NFC标签回调")
+        val handle = CardHandle.fromTag(tag)
+        if (handle == null) {
+            logEvent("NFC 标签不支持 MIFARE Classic 或缺少 UID")
+            return@ReaderCallback
+        }
+        processCard(handle.card, handle.source)
+    }
+
+    /** NFC 与蓝牙 PN532 共用的读卡/写卡处理入口。业务逻辑完全复用，不做分支。 */
+    private fun processCard(card: MifareCard, source: CardSource) {
+        if (!readingInProgress.compareAndSet(false, true)) {
+            logEvent("读卡请求被忽略：上一次读卡尚未完成")
+            return@processCard
+        }
+        logEvent("收到读卡回调")
         try {
             runOnUiThread {
                 if (pendingWriteItem != null) {
@@ -702,7 +737,7 @@ class MainActivity : ComponentActivity() {
             if (pendingWriteItem != null) {
                 val targetItem = pendingWriteItem
                 val writeResult = if (targetItem != null) {
-                    writeTagFromDump(tag, targetItem) { status ->
+                    writeTagFromDump(card, targetItem) { status ->
                         runOnUiThread { writeStatusMessage = status }
                     }
                 } else {
@@ -713,7 +748,7 @@ class MainActivity : ComponentActivity() {
                     // 写入成功后自动校验（无需重复贴卡）
                     runOnUiThread { writeStatusMessage = uiString(R.string.copy_write_done_verifying) }
                     val verifyResult = if (targetItem != null) {
-                        verifyTagAgainstDump(tag, targetItem)
+                        verifyTagAgainstDump(card, targetItem)
                     } else uiString(R.string.copy_verify_task_empty)
                     runOnUiThread {
                         if (verifyResult.contains("成功") || verifyResult.contains("success", ignoreCase = true)) {
@@ -770,7 +805,7 @@ class MainActivity : ComponentActivity() {
             } else if (pendingVerifyItem != null) {
                 val targetItem = pendingVerifyItem
                 val result = if (targetItem != null) {
-                    verifyTagAgainstDump(tag, targetItem)
+                    verifyTagAgainstDump(card, targetItem)
                 } else {
                     uiString(R.string.copy_verify_task_empty)
                 }
@@ -795,7 +830,7 @@ class MainActivity : ComponentActivity() {
             } else if (pendingCModifyItem != null) {
                 val targetItem = pendingCModifyItem
                 val result = if (targetItem != null) {
-                    writeCModifyTag(tag, targetItem) { status ->
+                    writeCModifyTag(card, targetItem) { status ->
                         runOnUiThread { writeStatusMessage = status }
                     }
                 } else {
@@ -813,7 +848,7 @@ class MainActivity : ComponentActivity() {
             } else if (pendingNdefWriteRequest != null) {
                 val request = pendingNdefWriteRequest
                 val result = if (request != null) {
-                    writeNdefDataAndVerify(tag, request)
+                    writeNdefDataAndVerify(card, request)
                 } else {
                     uiString(R.string.copy_ndef_task_empty)
                 }
@@ -827,7 +862,7 @@ class MainActivity : ComponentActivity() {
                     pendingNdefWriteRequest = null
                 }
             } else if (pendingClearFuid) {
-                val result = clearFuidAndResetTag(tag) { status ->
+                val result = clearFuidAndResetTag(card) { status ->
                     runOnUiThread {
                         miscStatusMessage = status
                     }
@@ -852,7 +887,7 @@ class MainActivity : ComponentActivity() {
                     pendingClearFuid = false
                 }
             } else if (pendingCuidTest) {
-                val result = testCuidCard(tag) { status ->
+                val result = testCuidCard(card) { status ->
                     runOnUiThread { miscStatusMessage = status }
                 }
                 runOnUiThread {
@@ -867,7 +902,7 @@ class MainActivity : ComponentActivity() {
             } else if (pendingNfcCompatibilityTest != null) {
                 val testKind = pendingNfcCompatibilityTest
                 val result = runNfcCompatibilityTest(
-                    tag = tag,
+                    card = card,
                     includeWrite = testKind == PendingNfcCompatibilityTest.WRITE_VERIFY
                 ) { status ->
                     runOnUiThread {
@@ -885,10 +920,10 @@ class MainActivity : ComponentActivity() {
                     }
                     pendingNfcCompatibilityTest = null
                 }
-                return@ReaderCallback
+                return@processCard
             } else if (pendingSnapmakerWriteItem != null) {
                 val targetItem = pendingSnapmakerWriteItem!!
-                val writeResult = writeSnapmakerTagFromDump(tag, targetItem) { status ->
+                val writeResult = writeSnapmakerTagFromDump(card, targetItem) { status ->
                     runOnUiThread { snapmakerWriteStatusMessage = status }
                 }
                 runOnUiThread {
@@ -911,7 +946,7 @@ class MainActivity : ComponentActivity() {
                 }
             } else if (pendingCrealityWrite != null) {
                 val target = pendingCrealityWrite!!
-                val result = writeCrealityTag(tag, target)
+                val result = writeCrealityTag(card, target)
                 runOnUiThread {
                     crealityStatusMessage = result
                     if (result.contains("成功") || result.contains("success", ignoreCase = true)) {
@@ -923,10 +958,10 @@ class MainActivity : ComponentActivity() {
                 }
             } else if (!shouldHandlePassiveNfcRead(globalNfcListenerEnabled, currentActiveRoute)) {
                 logEvent("普通NFC读卡被忽略：全局监听关闭，当前页面=$currentActiveRoute")
-                return@ReaderCallback
+                return@processCard
             } else if (crealityEnabled && currentActiveRoute == "creality") {
                 // On the Creality screen: only attempt Creality read, stay on current screen
-                val crealityResult = readCrealityTag(tag)
+                val crealityResult = readCrealityTag(card)
                 runOnUiThread {
                     if (crealityResult != null) {
                         crealityLastTagData = crealityResult
@@ -940,7 +975,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 // 自动品牌检测：派生秘钥认证sector0，切换品牌后读取
                 if (autoDetectBrand) {
-                    val detected = detectBrandBySector0(tag)
+                    val detected = detectBrandBySector0(card)
                     if (detected != null && detected != readerBrand) {
                         runOnUiThread {
                             readerBrand = detected
@@ -951,7 +986,7 @@ class MainActivity : ComponentActivity() {
                 }
                 when (readerBrand) {
                     ReaderBrand.BAMBU -> {
-                        val result = readTag(tag)
+                        val result = readTag(card)
                         runOnUiThread {
                             uiState = result
                             shouldNavigateToReader = true
@@ -973,7 +1008,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     ReaderBrand.CREALITY -> {
-                        val result = readCrealityTag(tag)
+                        val result = readCrealityTag(card)
                         val material = result?.let {
                             filamentDbHelper?.getCrealityMaterialById(
                                 filamentDbHelper!!.readableDatabase, it.materialId
@@ -992,7 +1027,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     ReaderBrand.SNAPMAKER -> {
-                        val result = readSnapmakerTag(tag)
+                        val result = readSnapmakerTag(card)
                         runOnUiThread {
                             if (result != null) {
                                 readerSnapmakerTagData = result
@@ -1018,6 +1053,223 @@ class MainActivity : ComponentActivity() {
             }
         } finally {
             readingInProgress.set(false)
+        }
+    }
+
+    // ── 蓝牙 PN532 读卡源操作 ────────────────────────────────────────────────
+
+    /** 连接 + 扫描所需的蓝牙运行时权限（一次性申请）。 */
+    private val bluetoothPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            if (results.values.all { it }) {
+                onBluetoothPermissionGranted()
+            } else {
+                bluetoothStatusMessage = uiString(R.string.bt_permission_denied)
+                readerSourceBluetooth = false
+                bluetoothReaderEnabled = false
+            }
+        }
+
+    private fun onBluetoothPermissionGranted() {
+        logEvent("蓝牙权限已通过，检查适配器")
+        if (!bluetoothSpp.isBluetoothAvailable()) {
+            bluetoothStatusMessage = uiString(R.string.bt_not_supported)
+            readerSourceBluetooth = false
+            bluetoothReaderEnabled = false
+            return
+        }
+        if (!bluetoothSpp.isBluetoothEnabled()) {
+            bluetoothStatusMessage = uiString(R.string.bt_disabled_hint)
+            readerSourceBluetooth = false
+            bluetoothReaderEnabled = false
+            return
+        }
+        bluetoothScanRequested = true
+        startBluetoothScan()
+    }
+
+    /** 用户点击"使用蓝牙 PN532"入口时调用。 */
+    fun onBluetoothReaderToggle(enable: Boolean) {
+        logEvent("蓝牙读卡开关点击: enable=$enable")
+        if (!enable) {
+            stopBluetoothReader()
+            return
+        }
+        // 立即置位开关显示状态，打开扫描面板；与设备是否连接成功无关。
+        bluetoothReaderEnabled = true
+        bluetoothStatusMessage = uiString(R.string.bt_scanning)
+        val needed = mutableListOf<String>()
+        // 连接权限
+        val connectPerm = android.Manifest.permission.BLUETOOTH_CONNECT
+        if (checkSelfPermission(connectPerm) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            needed.add(connectPerm)
+        }
+        // 扫描权限（Android 12+ 是 BLUETOOTH_SCAN，低版本是定位）
+        BluetoothBleClient.scanPermissions().forEach { perm ->
+            if (checkSelfPermission(perm) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                needed.add(perm)
+            }
+        }
+        if (needed.isNotEmpty()) {
+            bluetoothPermissionLauncher.launch(needed.toTypedArray())
+            return
+        }
+        onBluetoothPermissionGranted()
+    }
+
+    /** 主动扫描周边蓝牙设备；结果实时更新到 UI 列表。 */
+    fun startBluetoothScan() {
+        logEvent("开始蓝牙扫描")
+        if (bluetoothScanning) bluetoothSpp.stopDiscovery()
+        bluetoothStatusMessage = uiString(R.string.bt_scanning)
+        bluetoothScanning = true
+        bluetoothDiscoveredDevices = emptyList()
+        val started = bluetoothSpp.startDiscovery(
+            onFound = { device ->
+                val name = bluetoothSpp.safeDeviceName(device).orEmpty()
+                val entry = Pair(device.address, name.ifBlank { device.address })
+                if (bluetoothDiscoveredDevices.none { it.first == device.address }) {
+                    bluetoothDiscoveredDevices = bluetoothDiscoveredDevices + entry
+                }
+            },
+            onFinished = {
+                bluetoothScanning = false
+                if (bluetoothDiscoveredDevices.isEmpty()) {
+                    bluetoothStatusMessage = uiString(R.string.bt_scan_no_devices)
+                } else {
+                    bluetoothStatusMessage = uiString(
+                        R.string.bt_scan_done_format,
+                        bluetoothDiscoveredDevices.size
+                    )
+                }
+            }
+        )
+        if (!started) {
+            bluetoothScanning = false
+            // 扫描失败不影响已配对设备：仍允许直接点列表连接。
+            val hasPaired = try {
+                bluetoothSpp.bondedDevices().isNotEmpty()
+            } catch (_: Exception) {
+                false
+            }
+            bluetoothStatusMessage = if (hasPaired) {
+                uiString(R.string.bt_scan_failed_but_paired)
+            } else {
+                uiString(R.string.bt_scan_failed)
+            }
+        }
+    }
+
+    /** 连接指定蓝牙设备（从 UI 设备列表选择后调用）。 */
+    fun connectBluetoothDevice(address: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            // 扫描到的新设备可能尚未配对；尝试配对（系统弹框或静默），再继续连接。
+            bluetoothSpp.stopDiscovery()
+            val device = try {
+                bluetoothSpp.findDevice(address)
+            } catch (e: SecurityException) {
+                null
+            }
+            if (device == null) {
+                withContext(Dispatchers.Main) {
+                    bluetoothStatusMessage = uiString(R.string.bt_device_not_found)
+                }
+                return@launch
+            }
+            // BLE GATT 透传模块通常无需系统配对（小程序直接 connectGatt），
+            // 因此这里不再主动 createBond，避免弹配对框或阻塞连接。
+            withContext(Dispatchers.Main) {
+                bluetoothStatusMessage = uiString(R.string.bt_connecting_format, bluetoothSpp.safeDeviceName(device).orEmpty())
+            }
+            val error = bluetoothSpp.connect(device)
+            if (error != null) {
+                withContext(Dispatchers.Main) {
+                    bluetoothStatusMessage = uiString(R.string.bt_connect_failed_format, error)
+                    readerSourceBluetooth = false
+                    bluetoothReaderEnabled = false
+                }
+                logDebug("蓝牙 SPP 连接失败: $error")
+                return@launch
+            }
+            val fw = try {
+                pn532Manager.initialize()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    bluetoothStatusMessage = uiString(R.string.bt_pn532_init_failed_format, e.message.orEmpty())
+                }
+                bluetoothSpp.disconnect()
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                bluetoothConnectedDevice = bluetoothSpp.safeDeviceName(device).orEmpty()
+                bluetoothStatusMessage = uiString(R.string.bt_connected_format, fw)
+                readerSourceBluetooth = true
+                startBluetoothPolling()
+            }
+        }
+    }
+
+    fun disconnectBluetoothDevice() {
+        stopBluetoothReader()
+    }
+
+    /** 设备列表供 UI 展示：扫描发现的优先，并补充已配对设备，按地址去重。 */
+    fun bondedBluetoothDevices(): List<Pair<String, String>> {
+        val result = LinkedHashMap<String, String>()
+        bluetoothDiscoveredDevices.forEach { result[it.first] = it.second }
+        try {
+            bluetoothSpp.bondedDevices().forEach { device ->
+                val name = bluetoothSpp.safeDeviceName(device).orEmpty()
+                if (name.isNotBlank()) result.putIfAbsent(device.address, name)
+            }
+        } catch (_: SecurityException) {
+        }
+        return result.map { Pair(it.key, it.value) }
+    }
+
+    private fun stopBluetoothReader() {
+        bluetoothPolling = false
+        bluetoothPollThread?.interrupt()
+        bluetoothPollThread = null
+        bluetoothSpp.stopDiscovery()
+        bluetoothSpp.disconnect()
+        pn532Manager.reset()
+        readerSourceBluetooth = false
+        bluetoothReaderEnabled = false
+        bluetoothConnectedDevice = ""
+        bluetoothScanning = false
+        bluetoothStatusMessage = uiString(R.string.bt_disconnected)
+    }
+
+    /**
+     * 后台轮询 PN532 场区内的标签。
+     * 检测到新卡后调用 processCard，与手机 NFC 走完全相同的业务链路。
+     */
+    private fun startBluetoothPolling() {
+        if (bluetoothPolling) return
+        bluetoothPolling = true
+        bluetoothPollThread = Thread {
+            while (bluetoothPolling && !Thread.currentThread().isInterrupted) {
+                try {
+                    val handle = pn532Manager.detectCard()
+                    if (handle != null) {
+                        processCard(handle.card, handle.source)
+                        Thread.sleep(400)
+                        pn532Manager.clearLastSeen()
+                    } else {
+                        Thread.sleep(180)
+                    }
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    logDebug("BT poll error: " + e.javaClass.simpleName + ": " + e.message)
+                    Thread.sleep(300)
+                }
+            }
+        }.apply {
+            name = "pn532-poll"
+            isDaemon = true
+            start()
         }
     }
 
@@ -1436,7 +1688,16 @@ class MainActivity : ComponentActivity() {
                     isDownloadingUpdate = isDownloadingUpdate,
                     updateDownloadProgress = updateDownloadProgress,
                     onStartUpdate = { info -> startUpdate(info) },
-                    onDismissUpdate = { pendingUpdateInfo = null }
+                    onDismissUpdate = { pendingUpdateInfo = null },
+                    bluetoothReaderEnabled = bluetoothReaderEnabled,
+                    bluetoothConnectedDevice = bluetoothConnectedDevice,
+                    bluetoothStatusMessage = bluetoothStatusMessage,
+                    bluetoothPairedDevices = if (bluetoothScanRequested) bondedBluetoothDevices() else emptyList(),
+                    bluetoothScanning = bluetoothScanning,
+                    onBluetoothScan = { startBluetoothScan() },
+                    onBluetoothReaderEnabledChange = { enable -> onBluetoothReaderToggle(enable) },
+                    onBluetoothDeviceConnect = { address -> connectBluetoothDevice(address) },
+                    onBluetoothDisconnect = { disconnectBluetoothDevice() },
                 )
                 // 重置导航标志
                 if (shouldNavigateToReader) {
@@ -1731,6 +1992,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopBluetoothReader()
         logEvent("应用退出，准备打包日志")
         filamentDbHelper?.close()
         tts?.stop()
@@ -2686,15 +2948,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun writeSnapmakerTagFromDump(
-        tag: Tag,
+        card: MifareCard,
         item: SnapmakerShareTagItem,
         onStatusUpdate: ((String) -> Unit)? = null
     ): String {
-        val mifare = MifareClassic.get(tag) ?: return uiString(R.string.snapmaker_write_failed_no_mifare)
+        val mifare = card
         val sourceBlocks = item.rawBlocks
         if (sourceBlocks.isEmpty()) return uiString(R.string.snapmaker_write_failed_empty)
 
-        val uid = tag.id ?: return uiString(R.string.snapmaker_write_failed_no_uid)
+        val uid = card.uid
         val ffKey = ByteArray(6) { 0xFF.toByte() }
         val targetSectorCount = minOf(16, mifare.sectorCount)
         val fullFfTrailer = ByteArray(16).apply {
@@ -2907,11 +3169,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun testCuidCard(
-        tag: Tag,
+        card: MifareCard,
         onStatusUpdate: ((String) -> Unit)? = null
     ): String {
-        val mifare = MifareClassic.get(tag)
-            ?: return uiString(R.string.misc_cuid_test_failed, getString(R.string.cuid_detail_no_mifare))
+        val mifare = card
         val ffKey = ByteArray(6) { 0xFF.toByte() }
         return try {
             mifare.connect()
@@ -3663,11 +3924,11 @@ class MainActivity : ComponentActivity() {
         return parseHexTagFileStrict(item.rawData)
     }
 
-    private fun writeTagFromDump(tag: Tag, item: ShareTagItem, onStatusUpdate: ((String) -> Unit)? = null): String {
+    private fun writeTagFromDump(card: MifareCard, item: ShareTagItem, onStatusUpdate: ((String) -> Unit)? = null): String {
         val sourceBlocks = resolveShareTagBlocks(item)
             ?: return uiString(R.string.write_failed_format, uiString(R.string.tag_import_invalid_zip))
         return when (val result = BambuMifareOperator.run(
-            tag = tag,
+            card = card,
             config = nfcCompatibilityConfig,
             operation = BambuNfcOperation.WriteDumpWithFf(sourceBlocks),
             context = this,
@@ -3689,14 +3950,14 @@ class MainActivity : ComponentActivity() {
      * Phase 3 — 重连，使用源数据密钥全量回读校验，Trailer 仅比较访问位。
      */
     private fun writeCModifyTag(
-        tag: Tag,
+        card: MifareCard,
         item: ShareTagItem,
         onStatusUpdate: ((String) -> Unit)? = null
     ): String {
         val sourceBlocks = resolveShareTagBlocks(item)
             ?: return uiString(R.string.cmodify_failed_format, uiString(R.string.tag_import_invalid_zip), uiString(R.string.cmodify_retry_hint))
         return when (val result = BambuMifareOperator.run(
-            tag = tag,
+            card = card,
             config = nfcCompatibilityConfig,
             operation = BambuNfcOperation.FormatThenWriteDump(sourceBlocks),
             context = this,
@@ -3711,19 +3972,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearFuidAndResetTag(
-        tag: Tag,
+        card: MifareCard,
         onStatusUpdate: ((String) -> Unit)? = null
     ): String {
-        val brand = detectFormatTagBrand(tag) ?: return uiString(R.string.format_failed_sector0_all_failed)
+        val brand = detectFormatTagBrand(card) ?: return uiString(R.string.format_failed_sector0_all_failed)
         val detectedMessage = uiString(R.string.format_detected_brand_format, formatTagBrandLabel(brand))
         logDebug(detectedMessage)
         LogCollector.append(applicationContext, "I", detectedMessage)
         onStatusUpdate?.invoke(detectedMessage)
         if (brand != FormatTagBrand.BAMBU) {
-            return formatNonBambuTagToDefaultFf(tag, brand, onStatusUpdate)
+            return formatNonBambuTagToDefaultFf(card, brand, onStatusUpdate)
         }
         return when (val result = BambuMifareOperator.run(
-            tag = tag,
+            card = card,
             config = nfcCompatibilityConfig,
             operation = BambuNfcOperation.FormatToDefaultFf,
             context = this,
@@ -3742,15 +4003,15 @@ class MainActivity : ComponentActivity() {
         val keysB: List<ByteArray?>
     )
 
-    private fun detectFormatTagBrand(tag: Tag): FormatTagBrand? {
-        val mifare = MifareClassic.get(tag) ?: return null
+    private fun detectFormatTagBrand(card: MifareCard): FormatTagBrand? {
+        val mifare = card
         return try {
             mifare.connect()
             MifareClassicSession.applyTimeout(mifare, nfcCompatibilityConfig.mifareTimeoutMs)
             if (nfcCompatibilityConfig.postConnectDelayMs > 0) {
                 Thread.sleep(nfcCompatibilityConfig.postConnectDelayMs)
             }
-            val uid = tag.id ?: return null
+            val uid = card.uid
             val ffKey = ByteArray(6) { 0xFF.toByte() }
             val bambuKeys = runCatching { deriveBambuKeys(uid) }.getOrNull().orEmpty()
             val snapmakerKeys = runCatching { deriveSnapmakerKeys(uid) }.getOrElse { Pair(emptyList(), emptyList()) }
@@ -3841,12 +4102,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun formatNonBambuTagToDefaultFf(
-        tag: Tag,
+        card: MifareCard,
         brand: FormatTagBrand,
         onStatusUpdate: ((String) -> Unit)? = null
     ): String {
-        val mifare = MifareClassic.get(tag) ?: return uiString(R.string.format_failed_no_mifare)
-        val uid = tag.id ?: return uiString(R.string.format_failed_no_uid)
+        val mifare = card
+        val uid = card.uid
         val ffKey = ByteArray(6) { 0xFF.toByte() }
         val zeroBlock = ByteArray(16)
         val defaultTrailer = ByteArray(16).apply {
@@ -3949,7 +4210,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resetNonBambuTrailerToDefaultFf(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         brand: FormatTagBrand,
         uid: ByteArray,
         sector: Int,
@@ -4065,33 +4326,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun writeNdefDataAndVerify(tag: Tag, request: NdefWriteRequest): String {
+    private fun writeNdefDataAndVerify(card: MifareCard, request: NdefWriteRequest): String {
         val message = try {
             buildNdefMessage(request)
         } catch (e: Exception) {
             return uiString(R.string.ndef_write_failed_generate_format, e.message.orEmpty())
         }
         val expectedBytes = message.toByteArray()
-        val mifareClassic = MifareClassic.get(tag)
-
         return try {
-            if (mifareClassic != null) {
-                writeNdefByMifareClassicMappingAndVerify(mifareClassic, expectedBytes)
-            } else {
-                uiString(R.string.ndef_write_failed_no_mapping)
-            }
+            writeNdefByMifareClassicMappingAndVerify(card, expectedBytes)
         } catch (e: Exception) {
             uiString(R.string.ndef_write_failed_format, e.message.orEmpty())
         } finally {
             try {
-                mifareClassic?.close()
+                card.close()
             } catch (_: Exception) {
             }
         }
     }
 
     private fun writeNdefByMifareClassicMappingAndVerify(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         ndefPayload: ByteArray
     ): String {
         val ffKey = ByteArray(6) { 0xFF.toByte() }
@@ -4239,11 +4494,11 @@ class MainActivity : ComponentActivity() {
             .replace("\"", "\\\"")
     }
 
-    private fun verifyTagAgainstDump(tag: Tag, item: ShareTagItem): String {
+    private fun verifyTagAgainstDump(card: MifareCard, item: ShareTagItem): String {
         val sourceBlocks = resolveShareTagBlocks(item)
             ?: return uiString(R.string.verify_failed_format, uiString(R.string.tag_import_invalid_zip))
         return when (val result = BambuMifareOperator.run(
-            tag = tag,
+            card = card,
             config = nfcCompatibilityConfig,
             operation = BambuNfcOperation.VerifyDump(sourceBlocks),
             context = this,
@@ -4264,10 +4519,10 @@ class MainActivity : ComponentActivity() {
      * 3) 返回第一个不一致块作为续写起点。
      */
     private fun detectWriteResumePoint(
-        tag: Tag,
+        card: MifareCard,
         sourceBlocks: List<ByteArray?>
     ): WriteResumePoint? {
-        val mifare = MifareClassic.get(tag) ?: return null
+        val mifare = card
         return try {
             mifare.connect()
             val targetSectorCount = minOf(WRITE_SECTOR_COUNT, mifare.sectorCount)
@@ -4319,7 +4574,7 @@ class MainActivity : ComponentActivity() {
      * - 已写入其他内容/不可识别：阻止写入。
      */
     private fun precheckBeforeWrite(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sourceBlocks: List<ByteArray?>
     ): WritePrecheckResult {
         val ffKey = ByteArray(6) { 0xFF.toByte() }
@@ -4516,12 +4771,12 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun readCrealityTag(tag: Tag): CrealityTagData? {
-        val mifare = MifareClassic.get(tag) ?: return null
+    private fun readCrealityTag(card: MifareCard): CrealityTagData? {
+        val mifare = card
         return try {
             if (!mifare.isConnected) mifare.connect()
             Thread.sleep(300)
-            val uid = tag.id ?: return null
+            val uid = card.uid
             val derivedKey = deriveCrealityKeyA(uid)
             val ffKey = ByteArray(6) { 0xFF.toByte() }
             val authenticated = authenticateSectorWithRetry(
@@ -4544,12 +4799,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun writeCrealityTag(tag: Tag, pending: CrealityWritePending): String {
-        val mifare = MifareClassic.get(tag) ?: return uiString(R.string.creality_write_failed_no_mifare)
+    private fun writeCrealityTag(card: MifareCard, pending: CrealityWritePending): String {
+        val mifare = card
         return try {
             if (!mifare.isConnected) mifare.connect()
             Thread.sleep(300)
-            val uid = tag.id ?: return uiString(R.string.creality_write_failed_no_uid)
+            val uid = card.uid
             val derivedKey = deriveCrealityKeyA(uid)
             val ffKey = ByteArray(6) { 0xFF.toByte() }
             val authenticated = authenticateSectorWithRetry(
@@ -4589,12 +4844,12 @@ class MainActivity : ComponentActivity() {
      * 4. 空白/未知：FF秘钥
      * 返回检测到的 ReaderBrand，或 null 表示无法判断（FF / 未知）
      */
-    private fun detectBrandBySector0(tag: Tag): ReaderBrand? {
-        val mifare = MifareClassic.get(tag) ?: return null
+    private fun detectBrandBySector0(card: MifareCard): ReaderBrand? {
+        val mifare = card
         return try {
             mifare.connect()
             Thread.sleep(200)
-            val uid = tag.id ?: return null
+            val uid = card.uid
             val ffKey = ByteArray(6) { 0xFF.toByte() }
 
             val bambuKeysA = try { deriveWriteKeys(uid, WRITE_INFO_A) } catch (_: Exception) { emptyList() }
@@ -4649,12 +4904,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 读取 Snapmaker 标签，返回解析结果；认证或解析失败返回 null */
-    private fun readSnapmakerTag(tag: Tag): SnapmakerTagData? {
-        val mifare = MifareClassic.get(tag) ?: return null
+    private fun readSnapmakerTag(card: MifareCard): SnapmakerTagData? {
+        val mifare = card
         return try {
             if (!mifare.isConnected) mifare.connect()
             Thread.sleep(300)
-            val uid = tag.id ?: return null
+            val uid = card.uid
             val (keysA, keysB) = deriveSnapmakerKeys(uid)
 
             // 组装 1024 字节缓冲区：16 扇区 × 4 块 × 16 字节（含 trailer 占位）
@@ -4826,19 +5081,16 @@ class MainActivity : ComponentActivity() {
     // ── End Snapmaker ─────────────────────────────────────────────────────────
 
     private fun runNfcCompatibilityTest(
-        tag: Tag,
+        card: MifareCard,
         includeWrite: Boolean,
         onStatusUpdate: (String) -> Unit
     ): String {
-        val uid = tag.id ?: return uiString(R.string.nfc_compat_fail_no_uid)
-        if (MifareClassic.get(tag) == null) {
-            return uiString(R.string.nfc_compat_fail_no_mifare)
-        }
+        val uid = card.uid
 
         val results = NfcCompatibilityMode.values().map { mode ->
             val config = NfcCompatibilityConfig.forMode(mode)
             onStatusUpdate(uiString(R.string.nfc_compat_testing_mode_format, nfcCompatibilityModeLabel(mode)))
-            testNfcCompatibilityMode(tag, uid, config, includeWrite)
+            testNfcCompatibilityMode(card, uid, config, includeWrite)
         }
 
         val successful = results
@@ -4880,19 +5132,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun testNfcCompatibilityMode(
-        tag: Tag,
+        card: MifareCard,
         uid: ByteArray,
         config: NfcCompatibilityConfig,
         includeWrite: Boolean
     ): NfcCompatibilityTestResult {
         val startedAt = System.currentTimeMillis()
-        val mifare = MifareClassic.get(tag) ?: return NfcCompatibilityTestResult(
-            mode = config.mode,
-            readOk = false,
-            writeOk = false,
-            durationMs = 0L,
-            message = uiString(R.string.nfc_compat_result_no_mifare)
-        )
+        val mifare = card
         return try {
             mifare.connect()
             MifareClassicSession.applyTimeout(mifare, config.mifareTimeoutMs)
@@ -4989,7 +5235,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readCompatibilityBlock(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         config: NfcCompatibilityConfig
     ): ByteArray? {
@@ -5011,7 +5257,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun writeCompatibilityBlock(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         data: ByteArray,
         config: NfcCompatibilityConfig
@@ -5035,7 +5281,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun authenticateSectorWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         sectorIndex: Int,
         keysA: List<ByteArray?>,
         keysB: List<ByteArray?>
@@ -5055,7 +5301,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun writeBlockWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int,
         data: ByteArray
     ): Boolean {
@@ -5098,7 +5344,7 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
-    private fun isMifareTrailerBlock(mifare: MifareClassic, blockIndex: Int): Boolean {
+    private fun isMifareTrailerBlock(mifare: MifareCard, blockIndex: Int): Boolean {
         return try {
             val sector = mifare.blockToSector(blockIndex)
             val firstBlock = mifare.sectorToBlock(sector)
@@ -5109,7 +5355,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readBlockWithRetry(
-        mifare: MifareClassic,
+        mifare: MifareCard,
         blockIndex: Int
     ): ByteArray? {
         for (attempt in 0..nfcCompatibilityConfig.blockRetryCount) {
@@ -5130,7 +5376,7 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
-    private fun ensureMifareClassicConnected(mifare: MifareClassic): Boolean {
+    private fun ensureMifareClassicConnected(mifare: MifareCard): Boolean {
         return MifareClassicSession.ensureConnected(
             mifare = mifare,
             reconnectDelayMs = nfcCompatibilityConfig.reconnectDelayMs,
@@ -5139,7 +5385,7 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun reconnectMifareClassic(mifare: MifareClassic): Boolean {
+    private fun reconnectMifareClassic(mifare: MifareCard): Boolean {
         return MifareClassicSession.reconnect(
             mifare = mifare,
             reconnectDelayMs = nfcCompatibilityConfig.reconnectDelayMs,
@@ -5301,12 +5547,12 @@ class MainActivity : ComponentActivity() {
         return hasLetter
     }
 
-    private fun readTag(tag: Tag): NfcUiState {
+    private fun readTag(card: MifareCard): NfcUiState {
         // 第一阶段：仅做读卡，返回原始块数据，不做业务解析。
         // 开启自动共享时强制读取全部扇区，确保上传数据完整。
         // 识别页读取使用高速无重试配置，最大化读卡速度；写入/校验仍用用户档位。
         val rawResult = NfcTagReader.readRaw(
-            tag = tag,
+            card = card,
             readAllSectors = readAllSectors || autoShareTag,
             context = this,
             compatibilityConfig = NfcCompatibilityConfig.fastRead(),
