@@ -14,7 +14,7 @@
 #   ./sync-upstream.sh              # 完整流程: fetch -> rebase -> 编译
 #   ./sync-upstream.sh --check      # 只检查是否有新版本，不动工作区
 #   ./sync-upstream.sh --no-build   # 合并但不编译
-#   ./sync-upstream.sh --push       # 合并后推送到自己的 fork 备份
+#   ./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / fork / Gitee 备份
 #   ./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测 (只走 Gitee)
 #
 # 基准: Gitee (origin) 直连优先；GitHub (gh-upstream) 作为降级备选，
@@ -312,15 +312,23 @@ fi
 
 # --- 9. 备份到远端 ---------------------------------------------------------
 if [ "$DO_PUSH" -eq 1 ]; then
-  # fork = GitHub 上的自己的 fork; gitee = Gitee 上自己的仓库
-  for target in fork gitee; do
+  # fork         = GitHub 上对上游仓库的 fork（备份用）
+  # github-pn532 = GitHub 上的独立正式仓库（主分支 main 承载 PN532 版）
+  # gitee        = Gitee 上的自己的仓库
+  for target in github-pn532 fork gitee; do
     if ! git remote get-url "$target" >/dev/null 2>&1; then
       warn "远端 $target 未配置，跳过"
       continue
     fi
-    say "推送到 $target 备份"
-    if git push "$target" "$BRANCH:$BRANCH" 2>&1 | tail -3; then
-      ok "已推送到 $target/$BRANCH"
+    # github-pn532 的默认分支是 main，本地分支名不同，单独映射
+    if [ "$target" = "github-pn532" ]; then
+      REMOTE_REF="main"
+    else
+      REMOTE_REF="$BRANCH"
+    fi
+    say "推送到 $target ($REMOTE_REF) 备份"
+    if git push "$target" "$BRANCH:refs/heads/$REMOTE_REF" 2>&1 | tail -3; then
+      ok "已推送到 $target/$REMOTE_REF"
     else
       warn "推送到 $target 失败"
       if [ "$target" = "gitee" ]; then

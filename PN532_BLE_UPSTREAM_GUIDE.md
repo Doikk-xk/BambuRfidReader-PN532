@@ -26,9 +26,19 @@
 |---|---|
 | `origin` | **Gitee 镜像 `JackMoHeiHei/BambuRfidReader`** —— 基准，国内直连，最快 |
 | `gh-upstream` | GitHub `m0h31h31/3DPrint-Filament-RFID-Tool` —— 降级备选，需代理 |
-| `fork` | 自己的 GitHub fork `Doikk-xk/...` —— 备份用 |
+| `github-pn532` | **自己的 GitHub 正式仓库 `Doikk-xk/BambuRfidReader-PN532`** —— 主分支 `main` 即 PN532 版，网页直接能看 |
+| `fork` | 自己的 GitHub fork `Doikk-xk/3DPrint-Filament-RFID-Tool` —— 额外备份 |
+| `gitee` | 自己的 Gitee 仓库 `doikk/BambuRfidReader-PN532` —— 备用备份（需私人令牌） |
 | `feature/pn532-ble` | **本地开发分支**，含全部 PN532 蓝牙改动 |
 | `master` | 与上游同步的干净主线，不含本地改动 |
+
+远端用途一览：
+
+| 远端 | 地址 | 状态 |
+|---|---|---|
+| `github-pn532` | `github.com/Doikk-xk/BambuRfidReader-PN532` | ✅ 已推送，`main` = `8c050f3`，标签 `v3.2.4-pn532` |
+| `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | ✅ 已推送，`feature/pn532-ble` = `8c050f3` |
+| `gitee` | `gitee.com/doikk/BambuRfidReader-PN532` | ⚠️ 仓库需手动创建 + 私人令牌（`projects` 权限） |
 
 关键原则：**PN532 改动全部是「增量提交」，不修改上游逻辑本身**。
 因此 rebase 时冲突只可能出现在下面这几个文件，且位置固定：
@@ -81,7 +91,7 @@ cd G:/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
 ```bash
 ./sync-upstream.sh --check      # 只看上游有没有新版本，不动工作区
 ./sync-upstream.sh --no-build   # 合并但不编译
-./sync-upstream.sh --push       # 合并后推送到自己的 fork 备份
+./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / fork / Gitee
 ./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测（只走 Gitee）
 ```
 
@@ -221,13 +231,25 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 
 ---
 
-## 四、备份到自己的 fork（可选）
+## 四、备份到远端（可选）
+
+`sync-upstream.sh --push` 会自动推三个地方：
 
 ```bash
+# GitHub 正式仓库（主分支 main = PN532 版，网页直接能看）
+git push github-pn532 feature/pn532-ble:refs/heads/main
+
+# GitHub fork 里的开发分支（额外保险）
 git push fork feature/pn532-ble:feature/pn532-ble
+
+# Gitee 备用（需先建仓库 + 私人令牌）
+git push gitee feature/pn532-ble:feature/pn532-ble
 ```
 
-推上去后，即使本地磁盘出问题，代码也在 GitHub 上存着。`sync-upstream.sh --push` 会自动做这一步。
+推上去后，即使本地磁盘出问题，代码也在 GitHub 上存着。
+
+> **注意**：`github-pn532` 的默认分支是 `main`，不是本地的 `feature/pn532-ble`，
+> 所以推送时必须显式写成 `feature/pn532-ble:refs/heads/main`，脚本已处理。
 
 ---
 

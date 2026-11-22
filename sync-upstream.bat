@@ -9,7 +9,7 @@ REM  Usage:
 REM     double-click this file
 REM     sync-upstream.bat --check      show upstream changes only
 REM     sync-upstream.bat --no-build   merge but skip the build
-REM     sync-upstream.bat --push       merge then push backup to my fork
+REM     sync-upstream.bat --push       merge then push to GitHub repo / fork / Gitee
 REM ===================================================================
 setlocal enabledelayedexpansion
 
