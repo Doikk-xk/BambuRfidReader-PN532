@@ -681,4 +681,9 @@
     <string name="bt_pn532_connect_now">連接</string>
     <string name="bt_pn532_ignore">忽略</string>
     <string name="bt_no_devices_found">暂无设备，点上方按钮扫描或先在系统设置中配对</string>
+    <string name="misc_device_id_edit">修改</string>
+    <string name="misc_device_id_dialog_title">裝置編號</string>
+    <string name="misc_device_id_dialog_hint">留空則使用本機編號</string>
+    <string name="misc_device_id_dialog_note">該編號用於下載共享標籤庫時標識本機。若要與官方版共用額度，請填官方版顯示的編號。</string>
+    <string name="misc_device_id_save">儲存</string>
 </resources>

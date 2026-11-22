@@ -1080,4 +1080,9 @@ Connect now?</string>
     <string name="bt_pn532_connect_now">Connect</string>
     <string name="bt_pn532_ignore">Ignore</string>
     <string name="bt_no_devices_found">No devices yet. Tap Scan above or pair in system Bluetooth settings.</string>
+    <string name="misc_device_id_edit">Edit</string>
+    <string name="misc_device_id_dialog_title">Device ID</string>
+    <string name="misc_device_id_dialog_hint">Leave blank to use this device ID</string>
+    <string name="misc_device_id_dialog_note">The ID identifies this device when downloading the shared tag library. Paste the ID shown in the official app to share the same quota.</string>
+    <string name="misc_device_id_save">Save</string>
 </resources>

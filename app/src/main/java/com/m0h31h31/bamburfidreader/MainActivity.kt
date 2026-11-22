@@ -1859,14 +1859,21 @@ class MainActivity : ComponentActivity() {
      * 拿到的 ANDROID_ID 与官方版不同，云端按 install_id 做的白名单校验
      * （例如共享标签库下载）就会拒绝。这里用构建期配置的官方编号覆盖，
      * 让两个版本在同一账号下表现一致。
+     *
+     * 用户在设置页手动指定过编号时不再覆盖 —— 手动设置优先级最高。
      */
     private fun applySharedInstallId() {
         val shared = BuildConfig.SHARED_INSTALL_ID.trim()
         if (shared.isEmpty()) return
         try {
-            val current = com.m0h31h31.bamburfidreader.utils.AnalyticsReporter.currentInstallId(this)
+            val reporter = com.m0h31h31.bamburfidreader.utils.AnalyticsReporter
+            if (reporter.isManualInstallId(this)) {
+                logDebug("设备编号已由用户手动指定，跳过构建期默认值")
+                return
+            }
+            val current = reporter.currentInstallId(this)
             if (current != shared) {
-                com.m0h31h31.bamburfidreader.utils.AnalyticsReporter.setLegacyInstallId(this, shared)
+                reporter.setLegacyInstallId(this, shared)
                 logDebug("设备编号已对齐官方版: $current -> $shared")
             }
         } catch (e: Exception) {

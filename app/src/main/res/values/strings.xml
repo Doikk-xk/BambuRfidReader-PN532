@@ -1080,4 +1080,9 @@
     <string name="bt_pn532_connect_now">连接</string>
     <string name="bt_pn532_ignore">忽略</string>
     <string name="bt_no_devices_found">暂无设备，点上方按钮扫描或先在系统设置中配对</string>
+    <string name="misc_device_id_edit">Edit</string>
+    <string name="misc_device_id_dialog_title">Device ID</string>
+    <string name="misc_device_id_dialog_hint">Leave blank to use this device ID</string>
+    <string name="misc_device_id_dialog_note">The ID identifies this device when downloading the shared tag library. Paste the ID shown in the official app to share the same quota.</string>
+    <string name="misc_device_id_save">Save</string>
 </resources>

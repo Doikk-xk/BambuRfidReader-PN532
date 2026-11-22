@@ -1021,4 +1021,9 @@
     <string name="bt_pn532_connect_now">连接</string>
     <string name="bt_pn532_ignore">忽略</string>
     <string name="bt_no_devices_found">暂无设备，点上方按钮扫描或先在系统设置中配对</string>
+    <string name="misc_device_id_edit">修改</string>
+    <string name="misc_device_id_dialog_title">设备编号</string>
+    <string name="misc_device_id_dialog_hint">留空则使用本机编号</string>
+    <string name="misc_device_id_dialog_note">该编号用于下载共享标签库时标识本机。若要与官方版共用额度，请填官方版显示的编号。</string>
+    <string name="misc_device_id_save">保存</string>
 </resources>

@@ -244,7 +244,7 @@ private fun ModernMiscScreen(
     val miscPrefs = remember(context) {
         context.getSharedPreferences(MISC_PREFS, android.content.Context.MODE_PRIVATE)
     }
-    val installId = remember(context) { AnalyticsReporter.getInstallId(context) }
+    var installId by remember { mutableStateOf(AnalyticsReporter.getInstallId(context)) }
     val appVersion = remember(context) {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
@@ -734,19 +734,16 @@ private fun ModernMiscScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.misc_device_id_label),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ModernWorkbenchTokens.Muted,
-                        modifier = Modifier.padding(end = 8.dp)
+                    DeviceIdRow(
+                        installId = installId,
+                        labelColor = ModernWorkbenchTokens.Muted,
+                        valueColor = ModernWorkbenchTokens.Ink,
+                        onChanged = { newId ->
+                            AnalyticsReporter.setManualInstallId(context, newId)
+                            installId = AnalyticsReporter.getInstallId(context)
+                        },
+                        modifier = Modifier.weight(1f)
                     )
-                    SelectionContainer(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = installId,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ModernWorkbenchTokens.Ink
-                        )
-                    }
                 }
                 OutlinedTextField(
                     value = nickname,
@@ -1250,6 +1247,96 @@ private fun ModernMiscScreen(
     }
 }
 
+/**
+ * 设备编号行：显示当前编号，并提供手动修改入口。
+ *
+ * PN532 版改了包名，ANDROID_ID 与官方版不同，云端按 install_id 做的白名单校验
+ * （共享标签库下载）会拒绝，所以构建期会带上官方版的编号。但那个编号是编译进去的，
+ * 一旦 APK 被分发给别人，对方就会顶着这个编号用。这里让用户可以随时改回自己的编号，
+ * 手动设置之后构建期的默认值不再覆盖。
+ *
+ * @param onChanged 回传用户输入的新编号；传空串表示恢复为本机编号。
+ */
+@Composable
+private fun DeviceIdRow(
+    installId: String,
+    labelColor: Color,
+    valueColor: Color,
+    onChanged: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showEditor by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf(installId) }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.misc_device_id_label),
+            style = MaterialTheme.typography.bodySmall,
+            color = labelColor,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = installId,
+                style = MaterialTheme.typography.bodySmall,
+                color = valueColor
+            )
+        }
+        TextButton(
+            onClick = {
+                draft = installId
+                showEditor = true
+            }
+        ) {
+            Text(
+                text = stringResource(R.string.misc_device_id_edit),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+
+    if (showEditor) {
+        AppAlertDialog(
+            onDismissRequest = { showEditor = false },
+            title = { Text(stringResource(R.string.misc_device_id_dialog_title)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { if (it.length <= 64) draft = it },
+                        label = { Text(stringResource(R.string.misc_device_id_dialog_hint)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.misc_device_id_dialog_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = labelColor,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onChanged(draft.trim())
+                    showEditor = false
+                }) {
+                    Text(stringResource(R.string.misc_device_id_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditor = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+}
+
 private fun modernPaletteOptions(): List<Pair<ColorPalette, Pair<Int, Int>>> = listOf(
     ColorPalette.ORANGE to Pair(R.string.palette_orange, 0xFFF99963.toInt()),
     ColorPalette.SKY_BLUE to Pair(R.string.palette_sky_blue, 0xFF56B7E6.toInt()),
@@ -1590,7 +1677,7 @@ fun MiscScreen(
     var showImportTypeDialog by remember { mutableStateOf(false) }
     var showAutoShareDisableConfirm by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    val installId = remember(context) { AnalyticsReporter.getInstallId(context) }
+    var installId by remember { mutableStateOf(AnalyticsReporter.getInstallId(context)) }
     var nickname by remember {
         mutableStateOf(miscPrefs.getString(KEY_NICKNAME, "").orEmpty())
     }
@@ -3104,19 +3191,16 @@ fun MiscScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = stringResource(R.string.misc_device_id_label),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(end = 8.dp)
+                            DeviceIdRow(
+                                installId = installId,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                valueColor = MaterialTheme.colorScheme.onSurface,
+                                onChanged = { newId ->
+                                    AnalyticsReporter.setManualInstallId(context, newId)
+                                    installId = AnalyticsReporter.getInstallId(context)
+                                },
+                                modifier = Modifier.weight(1f)
                             )
-                            SelectionContainer(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = installId,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
                         }
                         OutlinedTextField(
                             value = nickname,

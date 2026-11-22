@@ -20,6 +20,8 @@ object AnalyticsReporter {
     private const val PREFS_NAME = "analytics_prefs"
     /** 与官方包（com.m0h31h31.bamburfidreader）共用的设备编号。 */
     private const val KEY_LEGACY_INSTALL_ID = "legacy_install_id"
+    /** 用户在设置页手动指定过设备编号的标记。 */
+    private const val KEY_MANUAL_INSTALL_ID = "install_id_manual"
     private const val KEY_INSTALL_REPORTED = "install_reported"
 
     internal fun apiKeyHeaders(): Map<String, String> = buildMap {
@@ -81,6 +83,37 @@ object AnalyticsReporter {
         val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_LEGACY_INSTALL_ID, trimmed).commit()
         com.m0h31h31.bamburfidreader.logging.logDebug("Device identity override set: $trimmed")
+    }
+
+    /**
+     * 用户是否手动指定过设备编号。
+     * 一旦手动指定，构建期的默认值就不再覆盖用户的设置。
+     */
+    fun isManualInstallId(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_MANUAL_INSTALL_ID, false)
+    }
+
+    /**
+     * 用户手动指定设备编号（设置页入口）。
+     * 传入空字符串表示"恢复为本机编号"，会清掉沿用官方版的编号。
+     */
+    fun setManualInstallId(context: Context, id: String) {
+        val trimmed = id.trim()
+        val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+        if (trimmed.isEmpty()) {
+            prefs.edit()
+                .remove(KEY_LEGACY_INSTALL_ID)
+                .putBoolean(KEY_MANUAL_INSTALL_ID, true)
+                .commit()
+            com.m0h31h31.bamburfidreader.logging.logDebug("Device identity override cleared, using local id")
+        } else {
+            prefs.edit()
+                .putString(KEY_LEGACY_INSTALL_ID, trimmed)
+                .putBoolean(KEY_MANUAL_INSTALL_ID, true)
+                .commit()
+            com.m0h31h31.bamburfidreader.logging.logDebug("Device identity set manually: $trimmed")
+        }
     }
 
     /** 读取当前生效的设备编号（供 UI 显示）。 */
