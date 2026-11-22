@@ -20,7 +20,7 @@ set -uo pipefail
 cd "$(dirname "$0")" || exit 1
 
 BRANCH="feature/pn532-ble"
-UPSTREAM="upstream"
+UPSTREAM=""      # 运行时自动选择: origin(Gitee, 直连) -> gh-upstream(GitHub, 需代理)
 CHECK_ONLY=0
 DO_BUILD=1
 
@@ -37,8 +37,34 @@ warn() { printf '\033[1;33m[警告] %s\033[0m\n' "$*"; }
 err()  { printf '\033[1;31m[错误] %s\033[0m\n' "$*"; }
 
 # --- 1. 抓取上游 ------------------------------------------------------------
+# 基准仓库是 Gitee (origin)：国内直连，实测 ls-remote 0.27s，不需要代理。
+# GitHub (gh-upstream) 作为降级备选 —— 它和 Gitee 同步同一份代码，
+# 但国内访问需要代理，代理不通时自动回落。
+UPSTREAM=""
+for remote in origin gh-upstream; do
+  if git ls-remote --exit-code "$remote" HEAD >/dev/null 2>&1; then
+    UPSTREAM="$remote"
+    break
+  fi
+  warn "远端 $remote 不可达，尝试下一个"
+done
+
+if [ -z "$UPSTREAM" ]; then
+  err "所有远端都不可达，请检查网络/代理"
+  exit 1
+fi
+
 say "抓取上游 $UPSTREAM"
-git fetch "$UPSTREAM" --tags --prune || { err "fetch 失败，检查网络"; exit 1; }
+if ! git fetch "$UPSTREAM" --tags --prune; then
+  err "fetch 失败"
+  # GitHub 需要代理，若恰好选中的远端是它，提示切换
+  if [ "$UPSTREAM" = "gh-upstream" ]; then
+    echo "    GitHub 需要代理才能访问，可临时执行:"
+    echo "    git config http.proxy http://127.0.0.1:7890"
+    echo "    git config https.proxy http://127.0.0.1:7890"
+  fi
+  exit 1
+fi
 
 BASE=$(git merge-base HEAD "$UPSTREAM/master")
 UP_SHA=$(git rev-parse --short "$UPSTREAM/master")
