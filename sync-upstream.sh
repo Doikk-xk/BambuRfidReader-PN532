@@ -327,19 +327,26 @@ if [ "$DO_PUSH" -eq 1 ]; then
       warn "远端 $target 未配置，跳过"
       continue
     fi
-    # github-pn532 的默认分支是 main，本地分支名不同，单独映射
-    if [ "$target" = "github-pn532" ]; then
-      REMOTE_REF="main"
-    else
-      REMOTE_REF="$BRANCH"
+    # github-pn532 的默认分支是 main；gitee 的默认分支是 master（建仓时就是它，
+    # 且默认分支不允许直接删除）。两个远端都推 main + master 两个引用，
+    # 保证网页点开默认分支看到的一定是最新代码。
+    REFS=("$BRANCH:refs/heads/main")
+    if [ "$target" = "gitee" ]; then
+      REFS+=("$BRANCH:refs/heads/master")
     fi
-    say "推送到 $target ($REMOTE_REF) 备份"
-    if git push "$target" "$BRANCH:refs/heads/$REMOTE_REF" 2>&1 | tail -3; then
-      ok "已推送到 $target/$REMOTE_REF"
-    else
-      warn "推送到 $target 失败"
+    say "推送到 $target 备份 (main${REFS[1]:+ / master})"
+    PUSH_OK=1
+    for ref in "${REFS[@]}"; do
+      if git push "$target" "$ref" 2>&1 | tail -3; then
+        ok "已推送到 $target/${ref#*:refs/heads/}"
+      else
+        PUSH_OK=0
+        warn "推送到 $target 失败"
+      fi
+    done
+    if [ "$PUSH_OK" -eq 0 ]; then
       if [ "$target" = "gitee" ]; then
-        echo "    Gitee 需要私人令牌: 设置 -> 私人令牌 -> 生成新令牌"
+        echo "    Gitee 若要求认证: 设置 -> 私人令牌 -> 生成新令牌"
         echo "    勾选 projects 权限即可。推送时会在弹窗里填用户名和令牌。"
       else
         echo "    GitHub 需要代理，可先设置:"
