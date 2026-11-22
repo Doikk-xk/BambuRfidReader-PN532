@@ -674,5 +674,11 @@
     <string name="bt_scan_done_format">扫描完成，发现 %1$d 个设备</string>
     <string name="bt_scan_failed">无法启动扫描，请检查蓝牙与权限</string>
     <string name="bt_scan_failed_but_paired">无法启动自动扫描，可直接在下方选择已配对设备连接</string>
+    <string name="bt_scan_no_pn532">未发现 PCR532 读卡器，请确认模块已上电并在附近</string>
+    <string name="bt_pn532_found_title">发现 PCR532 读卡器</string>
+    <string name="bt_pn532_found_message">找到蓝牙读卡器：%1$s
+是否立即连接？</string>
+    <string name="bt_pn532_connect_now">连接</string>
+    <string name="bt_pn532_ignore">忽略</string>
     <string name="bt_no_devices_found">暂无设备，点上方按钮扫描或先在系统设置中配对</string>
 </resources>

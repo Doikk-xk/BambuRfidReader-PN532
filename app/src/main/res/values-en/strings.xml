@@ -1073,5 +1073,11 @@
     <string name="bt_scan_done_format">Scan complete, %1$d device(s) found</string>
     <string name="bt_scan_failed">Could not start scanning. Check Bluetooth and permissions.</string>
     <string name="bt_scan_failed_but_paired">Auto scan unavailable. Select a paired device below to connect.</string>
+    <string name="bt_scan_no_pn532">No PCR532 reader found. Make sure the module is powered on and nearby.</string>
+    <string name="bt_pn532_found_title">PCR532 reader found</string>
+    <string name="bt_pn532_found_message">Bluetooth reader found: %1$s
+Connect now?</string>
+    <string name="bt_pn532_connect_now">Connect</string>
+    <string name="bt_pn532_ignore">Ignore</string>
     <string name="bt_no_devices_found">No devices yet. Tap Scan above or pair in system Bluetooth settings.</string>
 </resources>

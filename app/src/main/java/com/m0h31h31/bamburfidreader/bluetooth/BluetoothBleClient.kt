@@ -163,16 +163,19 @@ class BluetoothBleClient(private val context: Context) : Pn532Transport {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device ?: return
             val name = safeDeviceName(device).orEmpty()
-            // 过滤信号极弱的杂散 BLE 广播（iBeacon/传感器等），避免列表刷屏。
-            // 有名称的设备一律保留（JDY/HC 模块通常带名字）。
-            if (name.isBlank() && result.rssi < -85) return
+            // 只保留 PCR532 / PN532 蓝牙读卡器：靠广播服务 UUID (FFE0/FF00) 或设备名关键字识别，
+            // 其它 BLE 广播（耳机、手环、传感器等）一律忽略，UI 不再刷屏。
+            if (!Pn532DeviceMatcher.isPn532Reader(result)) {
+                logDebug("BLE ignored non-PN532: ${name.ifBlank { "<no-name>" }} (${device.address})")
+                return
+            }
             val isNew: Boolean
             synchronized(discoveredDevices) {
                 isNew = !discoveredDevices.containsKey(device.address)
                 if (isNew) discoveredDevices[device.address] = device
             }
             if (isNew) {
-                logDebug("BLE scanned: ${name.ifBlank { "<no-name>" }} (${device.address}) RSSI=${result.rssi}")
+                logDebug("BLE scanned PN532: ${name.ifBlank { "<no-name>" }} (${device.address}) RSSI=${result.rssi}")
                 // ScanCallback 运行在 Binder 线程，UI 回调切回主线程。
                 mainHandler.post { discoveryCallback?.invoke(device) }
             }

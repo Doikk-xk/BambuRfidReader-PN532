@@ -87,9 +87,15 @@ fun BluetoothReaderPanel(
                         enabled = !scanning,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    // 只显示 PCR532 读卡器：扫描时找到会直接弹连接框，
+                    // 这里保留一个列表作为兜底（弹框被忽略后仍可手动连接）。
                     if (pairedDevices.isEmpty()) {
                         Text(
-                            text = stringResource(R.string.bt_no_devices_found),
+                            text = if (scanning) {
+                                stringResource(R.string.bt_scanning)
+                            } else {
+                                stringResource(R.string.bt_scan_no_pn532)
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

@@ -320,6 +320,49 @@ private val WRITE_HKDF_SALT = byteArrayOf(
 private val WRITE_INFO_A = "RFID-A\u0000".toByteArray(Charsets.US_ASCII)
 private val WRITE_INFO_B = "RFID-B\u0000".toByteArray(Charsets.US_ASCII)
 
+/**
+ * 扫描到 PCR532 蓝牙读卡器后的连接确认框。
+ * 找到设备即弹出，用户点"连接"直接建立 GATT 连接。
+ */
+@Composable
+private fun Pn532ConnectDialog(
+    deviceName: String,
+    deviceAddress: String,
+    onConnect: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    com.m0h31h31.bamburfidreader.ui.components.AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            androidx.compose.material3.Text(
+                text = androidx.compose.ui.res.stringResource(R.string.bt_pn532_found_title)
+            )
+        },
+        text = {
+            androidx.compose.material3.Text(
+                text = androidx.compose.ui.res.stringResource(
+                    R.string.bt_pn532_found_message,
+                    deviceName.ifBlank { deviceAddress }
+                )
+            )
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onConnect) {
+                androidx.compose.material3.Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.bt_pn532_connect_now)
+                )
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                androidx.compose.material3.Text(
+                    text = androidx.compose.ui.res.stringResource(R.string.bt_pn532_ignore)
+                )
+            }
+        }
+    )
+}
+
 @Composable
 private fun NoticeGuideDialog(
     onDismiss: () -> Unit,
@@ -582,6 +625,11 @@ class MainActivity : ComponentActivity() {
     private var bluetoothScanRequested by mutableStateOf(false)
     private var bluetoothScanning by mutableStateOf(false)
     private var bluetoothDiscoveredDevices by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    // 扫描到 PCR532 后弹出的连接确认框
+    private var bluetoothConnectPrompt by mutableStateOf(false)
+    private var bluetoothConnectPromptShown by mutableStateOf(false)
+    private var bluetoothDeviceToConnect by mutableStateOf("")
+    private var bluetoothDeviceNameToConnect by mutableStateOf("")
     @Volatile
     private var bluetoothPolling = false
     private var bluetoothPollThread: Thread? = null
@@ -1117,7 +1165,7 @@ class MainActivity : ComponentActivity() {
         onBluetoothPermissionGranted()
     }
 
-    /** 主动扫描周边蓝牙设备；结果实时更新到 UI 列表。 */
+    /** 主动扫描周边蓝牙设备；只上报 PCR532 读卡器，找到后弹连接选项。 */
     fun startBluetoothScan() {
         logEvent("开始蓝牙扫描")
         if (bluetoothScanning) bluetoothSpp.stopDiscovery()
@@ -1126,16 +1174,28 @@ class MainActivity : ComponentActivity() {
         bluetoothDiscoveredDevices = emptyList()
         val started = bluetoothSpp.startDiscovery(
             onFound = { device ->
-                val name = bluetoothSpp.safeDeviceName(device).orEmpty()
-                val entry = Pair(device.address, name.ifBlank { device.address })
-                if (bluetoothDiscoveredDevices.none { it.first == device.address }) {
-                    bluetoothDiscoveredDevices = bluetoothDiscoveredDevices + entry
+                // 只认 PCR532 / PN532 蓝牙读卡器，其它 BLE 设备直接忽略。
+                val isReader = com.m0h31h31.bamburfidreader.bluetooth.Pn532DeviceMatcher.isPn532Reader(device)
+                if (isReader) {
+                    val name = bluetoothSpp.safeDeviceName(device).orEmpty()
+                    val entry = Pair(device.address, name.ifBlank { device.address })
+                    val alreadyListed = bluetoothDiscoveredDevices.any { it.first == device.address }
+                    if (!alreadyListed) {
+                        bluetoothDiscoveredDevices = bluetoothDiscoveredDevices + entry
+                    }
+                    // 找到读卡器就立刻弹连接选项，用户点一下即可连接。
+                    if (!bluetoothConnectPromptShown) {
+                        bluetoothConnectPromptShown = true
+                        bluetoothDeviceToConnect = device.address
+                        bluetoothDeviceNameToConnect = name
+                        bluetoothConnectPrompt = true
+                    }
                 }
             },
             onFinished = {
                 bluetoothScanning = false
                 if (bluetoothDiscoveredDevices.isEmpty()) {
-                    bluetoothStatusMessage = uiString(R.string.bt_scan_no_devices)
+                    bluetoothStatusMessage = uiString(R.string.bt_scan_no_pn532)
                 } else {
                     bluetoothStatusMessage = uiString(
                         R.string.bt_scan_done_format,
@@ -1216,9 +1276,14 @@ class MainActivity : ComponentActivity() {
     /** 设备列表供 UI 展示：扫描发现的优先，并补充已配对设备，按地址去重。 */
     fun bondedBluetoothDevices(): List<Pair<String, String>> {
         val result = LinkedHashMap<String, String>()
+        // 扫描结果（已按 PCR532 特征过滤）
         bluetoothDiscoveredDevices.forEach { result[it.first] = it.second }
         try {
             bluetoothSpp.bondedDevices().forEach { device ->
+                // 已配对列表同样只保留 PCR532 读卡器，避免无关设备刷屏。
+                if (!com.m0h31h31.bamburfidreader.bluetooth.Pn532DeviceMatcher.isPn532Reader(device)) {
+                    return@forEach
+                }
                 val name = bluetoothSpp.safeDeviceName(device).orEmpty()
                 if (name.isNotBlank()) result.putIfAbsent(device.address, name)
             }
@@ -1312,6 +1377,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySharedInstallId()
         val uiPrefs = getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE)
         if (BuildConfig.VERSION_CODE == FORCE_MINIMAL_UI_STYLE_VERSION_CODE &&
             uiPrefs.getInt(KEY_UI_STYLE_FORCED_VERSION_CODE, 0) != FORCE_MINIMAL_UI_STYLE_VERSION_CODE
@@ -1752,6 +1818,22 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+                if (bluetoothConnectPrompt) {
+                    Pn532ConnectDialog(
+                        deviceName = bluetoothDeviceNameToConnect,
+                        deviceAddress = bluetoothDeviceToConnect,
+                        onConnect = {
+                            bluetoothConnectPrompt = false
+                            val address = bluetoothDeviceToConnect
+                            if (address.isNotBlank()) {
+                                connectBluetoothDevice(address)
+                            }
+                        },
+                        onDismiss = {
+                            bluetoothConnectPrompt = false
+                        }
+                    )
+                }
                 if (showNoticeGuide) {
                     NoticeGuideDialog(
                         onDismiss = {
@@ -1767,6 +1849,28 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * 应用与官方包共用的设备编号。
+     *
+     * ANDROID_ID 由系统按「包名 + 用户 + 设备」生成，PN532 版改了 applicationId，
+     * 拿到的 ANDROID_ID 与官方版不同，云端按 install_id 做的白名单校验
+     * （例如共享标签库下载）就会拒绝。这里用构建期配置的官方编号覆盖，
+     * 让两个版本在同一账号下表现一致。
+     */
+    private fun applySharedInstallId() {
+        val shared = BuildConfig.SHARED_INSTALL_ID.trim()
+        if (shared.isEmpty()) return
+        try {
+            val current = com.m0h31h31.bamburfidreader.utils.AnalyticsReporter.currentInstallId(this)
+            if (current != shared) {
+                com.m0h31h31.bamburfidreader.utils.AnalyticsReporter.setLegacyInstallId(this, shared)
+                logDebug("设备编号已对齐官方版: $current -> $shared")
+            }
+        } catch (e: Exception) {
+            logDebug("设备编号对齐失败: ${e.message}")
         }
     }
 
