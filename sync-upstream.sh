@@ -42,6 +42,7 @@ err()  { printf '\033[1;31m[错误] %s\033[0m\n' "$*"; }
 # 但国内访问需要代理，代理不通时自动回落。
 UPSTREAM=""
 for remote in origin gh-upstream; do
+  # 用 ls-remote 探测可达性：只读操作，不会改动 remote-tracking 引用
   if git ls-remote --exit-code "$remote" HEAD >/dev/null 2>&1; then
     UPSTREAM="$remote"
     break
@@ -51,6 +52,8 @@ done
 
 if [ -z "$UPSTREAM" ]; then
   err "所有远端都不可达，请检查网络/代理"
+  echo "    Gitee 直连即可，无需代理；若要改用 GitHub:"
+  echo "    git config http.https://github.com/.proxy http://127.0.0.1:7890"
   exit 1
 fi
 
@@ -124,6 +127,10 @@ if [ $RC -ne 0 ]; then
   echo "  4) 继续:       git rebase --continue"
   echo "  5) 想放弃:     git rebase --abort"
   echo
+  if [ "$STASHED" -eq 1 ]; then
+    warn "之前 stash 的改动仍在 stash 里，解冲突后用 git stash pop 取回"
+    echo "    (或 git stash list 查看，git stash pop 恢复)"
+  fi
   echo "解完后重新执行本脚本即可继续编译。"
   exit $RC
 fi
