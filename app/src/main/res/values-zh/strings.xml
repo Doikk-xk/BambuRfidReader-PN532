@@ -1024,6 +1024,6 @@
     <string name="misc_device_id_edit">修改</string>
     <string name="misc_device_id_dialog_title">设备编号</string>
     <string name="misc_device_id_dialog_hint">留空则使用本机编号</string>
-    <string name="misc_device_id_dialog_note">该编号用于下载共享标签库时标识本机。若要与官方版共用额度，请填官方版显示的编号。</string>
+    <string name="misc_device_id_dialog_note">该编号用于上传标签和下载共享标签库时标识本机。共享至少三张标签即可获得下载权限。留空则自动使用本机编号。</string>
     <string name="misc_device_id_save">保存</string>
 </resources>

@@ -88,18 +88,20 @@ if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
 fi
 
 if [ ! -f local.properties ]; then
-  err "缺少 local.properties（SDK 路径 / TAG_PACKAGE_KEY / SHARED_INSTALL_ID 等）"
+  err "缺少 local.properties（SDK 路径 / TAG_PACKAGE_KEY / EVENT_API_KEY 等）"
   exit 1
 fi
 MISSING_KEYS=""
-for key in TAG_PACKAGE_KEY EVENT_API_KEY SHARED_INSTALL_ID; do
+for key in TAG_PACKAGE_KEY EVENT_API_KEY; do
   grep -q "^${key}=.\+" local.properties || MISSING_KEYS="$MISSING_KEYS $key"
 done
 if [ -n "$MISSING_KEYS" ]; then
   warn "local.properties 缺少键:$MISSING_KEYS"
   echo "    这些键不在 git 里（已 gitignore），rebase 不会动它们，但缺失会导致"
-  echo "    共享标签库下载 / 事件上报 / 云端白名单校验失败。"
+  echo "    共享标签库无法解密 / 事件上报被拒。"
 fi
+# SHARED_INSTALL_ID 是可选的：默认留空，让每台设备用自己的编号。
+# 只有想统一用一个编号时才配置它。
 
 # git 身份：没有它 rebase --continue 会直接失败（提交时无法确定作者）
 if [ -z "$(git config user.email)" ]; then
@@ -273,7 +275,7 @@ else
 fi
 
 if grep -q "SHARED_INSTALL_ID" app/build.gradle.kts 2>/dev/null; then
-  ok "共享 install_id 构建配置保留"
+  ok "install_id 构建配置保留（默认留空，每台设备用自己的编号）"
 else
   warn "build.gradle.kts 里没有 SHARED_INSTALL_ID 了，检查一下是否被上游改掉"
 fi

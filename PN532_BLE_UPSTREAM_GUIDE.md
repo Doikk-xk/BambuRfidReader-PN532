@@ -83,7 +83,7 @@ cd G:/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
 7. `git rebase origin/master`（上游提交垫底，PN532 改动重放在最上）
 8. `git stash pop` 恢复
 9. 合并后自检：`applicationId` 是否被上游改掉、PN532 关键文件是否还在、
-   `SHARED_INSTALL_ID` 配置是否还在
+   `TAG_PACKAGE_KEY` 配置是否还在
 10. 编译前扫描冲突标记残留 → 编译 APK → 打印安装命令
 
 常用参数：
@@ -191,7 +191,7 @@ git grep -n -E '^(<<<<<<<|>>>>>>>|=======)' -- .
 |---|---|---|
 | `TAG_PACKAGE_KEY` | 共享标签库包解密密钥 | 下载后无法解压 / 导入失败 |
 | `EVENT_API_KEY` | 事件上报 | 上报被拒 |
-| `SHARED_INSTALL_ID` | 与官方包共用的设备编号 | 云端 install_id 白名单校验失败，共享库下载不了 |
+| `SHARED_INSTALL_ID` | 可选，默认注释掉 | 无影响。服务端按 install_id 累计共享标签数，满 3 张即放行下载，每台设备用自己的编号即可 |
 
 脚本启动时会检查这三项并提示。
 

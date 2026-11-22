@@ -684,6 +684,6 @@
     <string name="misc_device_id_edit">修改</string>
     <string name="misc_device_id_dialog_title">裝置編號</string>
     <string name="misc_device_id_dialog_hint">留空則使用本機編號</string>
-    <string name="misc_device_id_dialog_note">該編號用於下載共享標籤庫時識別本機。若要與官方版共用額度，請填官方版顯示的編號。</string>
+    <string name="misc_device_id_dialog_note">該編號用於上傳標籤和下載共享標籤庫時識別本機。共享至少三張標籤即可獲得下載權限。留空則自動使用本機編號。</string>
     <string name="misc_device_id_save">儲存</string>
 </resources>

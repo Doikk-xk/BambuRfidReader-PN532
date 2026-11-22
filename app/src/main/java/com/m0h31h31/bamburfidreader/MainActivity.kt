@@ -1853,14 +1853,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 应用与官方包共用的设备编号。
+     * 可选的构建期设备编号覆盖。
      *
-     * ANDROID_ID 由系统按「包名 + 用户 + 设备」生成，PN532 版改了 applicationId，
-     * 拿到的 ANDROID_ID 与官方版不同，云端按 install_id 做的白名单校验
-     * （例如共享标签库下载）就会拒绝。这里用构建期配置的官方编号覆盖，
-     * 让两个版本在同一账号下表现一致。
+     * 默认不配置任何编号，每台设备使用自己的编号。云端按编号累计共享标签数，
+     * 满 3 张即放行共享库下载，上传与下载用的是同一个编号，
+     * 所以每台设备都能自行获得权限，不需要与他人共用。
      *
-     * 用户在设置页手动指定过编号时不再覆盖 —— 手动设置优先级最高。
+     * 仅当构建时显式配置了 SHARED_INSTALL_ID 时才生效（例如发行方希望
+     * 统一用一个编号）。用户在设置页手动指定过编号时不覆盖 —— 手动设置优先。
      */
     private fun applySharedInstallId() {
         val shared = BuildConfig.SHARED_INSTALL_ID.trim()
@@ -1873,8 +1873,8 @@ class MainActivity : ComponentActivity() {
             }
             val current = reporter.currentInstallId(this)
             if (current != shared) {
-                reporter.setLegacyInstallId(this, shared)
-                logDebug("设备编号已对齐官方版: $current -> $shared")
+                reporter.setManualInstallId(this, shared)
+                logDebug("设备编号已对齐构建期配置: $current -> $shared")
             }
         } catch (e: Exception) {
             logDebug("设备编号对齐失败: ${e.message}")

@@ -18,10 +18,10 @@ data class UpdateInfo(
 
 object AnalyticsReporter {
     private const val PREFS_NAME = "analytics_prefs"
-    /** 与官方包（com.m0h31h31.bamburfidreader）共用的设备编号。 */
-    private const val KEY_LEGACY_INSTALL_ID = "legacy_install_id"
-    /** 用户在设置页手动指定过设备编号的标记。 */
+    /** 用户手动指定的设备编号（设置页填写，优先于一切自动取值）。 */
     private const val KEY_MANUAL_INSTALL_ID = "install_id_manual"
+    /** 手动指定的编号本体。与 KEY_MANUAL_INSTALL_ID 配对使用。 */
+    private const val KEY_MANUAL_ID_VALUE = "install_id_manual_value"
     private const val KEY_INSTALL_REPORTED = "install_reported"
 
     internal fun apiKeyHeaders(): Map<String, String> = buildMap {
@@ -31,19 +31,20 @@ object AnalyticsReporter {
     }
 
     /**
-     * 保留有效 ANDROID_ID；异常时优先使用应用范围的 Widevine 派生 UUID。
-     * 已保存的编号优先，避免后续系统返回值变化导致身份切换。
-     * Widevine 也不可用时才使用随机 UUID，此兜底无法保证清除数据或重装后不变。
+     * 当前设备编号。
+     *
+     * 优先级：手动指定 > 本机自动生成（ANDROID_ID / Widevine 派生 / 随机 UUID）。
+     *
+     * 云端按这个编号累计共享标签数，满 3 张即放行共享库下载；上传与下载用的是
+     * 同一个编号，所以每台设备用自己的编号就能自行获得权限，无需与他人共用。
      *
      * 注意：ANDROID_ID 与包名绑定。PN532 版改了 applicationId，系统会分配不同的
-     * ANDROID_ID，导致云端白名单校验（共享标签库下载）不通过。
-     * 因此这里优先使用 [KEY_LEGACY_INSTALL_ID] 里保存的官方包编号。
+     * ANDROID_ID，但这不影响下载 —— 权限按编号累计，与编号来自哪台设备无关。
      */
     fun getInstallId(context: Context): String {
         val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
-        // 与官方包共用同一身份标识：PN532 版包名不同，ANDROID_ID 也不同，
-        // 必须显式沿用官方包的编号，否则共享标签库等云端校验会失败。
-        prefs.getString(KEY_LEGACY_INSTALL_ID, null)
+        // 手动指定的编号优先级最高：用户可能想与官方版共用同一身份。
+        prefs.getString(KEY_MANUAL_ID_VALUE, null)
             ?.takeIf { it.isNotBlank() }
             ?.let { return it }
         return StableDeviceId.getOrCreate(
@@ -74,18 +75,6 @@ object AnalyticsReporter {
     }
 
     /**
-     * 写入与官方包一致的设备编号（仅 PN532 版需要）。
-     * 用于让云端按 install_id 的白名单校验通过，例如共享标签库下载。
-     */
-    fun setLegacyInstallId(context: Context, id: String) {
-        val trimmed = id.trim()
-        if (trimmed.isEmpty()) return
-        val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_LEGACY_INSTALL_ID, trimmed).commit()
-        com.m0h31h31.bamburfidreader.logging.logDebug("Device identity override set: $trimmed")
-    }
-
-    /**
      * 用户是否手动指定过设备编号。
      * 一旦手动指定，构建期的默认值就不再覆盖用户的设置。
      */
@@ -96,20 +85,20 @@ object AnalyticsReporter {
 
     /**
      * 用户手动指定设备编号（设置页入口）。
-     * 传入空字符串表示"恢复为本机编号"，会清掉沿用官方版的编号。
+     * 传入空字符串表示"恢复为本机自动生成的编号"。
      */
     fun setManualInstallId(context: Context, id: String) {
         val trimmed = id.trim()
         val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
         if (trimmed.isEmpty()) {
             prefs.edit()
-                .remove(KEY_LEGACY_INSTALL_ID)
+                .remove(KEY_MANUAL_ID_VALUE)
                 .putBoolean(KEY_MANUAL_INSTALL_ID, true)
                 .commit()
             com.m0h31h31.bamburfidreader.logging.logDebug("Device identity override cleared, using local id")
         } else {
             prefs.edit()
-                .putString(KEY_LEGACY_INSTALL_ID, trimmed)
+                .putString(KEY_MANUAL_ID_VALUE, trimmed)
                 .putBoolean(KEY_MANUAL_INSTALL_ID, true)
                 .commit()
             com.m0h31h31.bamburfidreader.logging.logDebug("Device identity set manually: $trimmed")

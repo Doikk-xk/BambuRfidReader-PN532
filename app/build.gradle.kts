@@ -34,10 +34,12 @@ android {
         buildConfigField("String", "EVENT_API_KEY", "\"${escapeBuildConfigString(eventApiKey)}\"")
         val tagPackageKey = localProperties.getProperty("TAG_PACKAGE_KEY", "")
         buildConfigField("String", "TAG_PACKAGE_KEY", "\"${escapeBuildConfigString(tagPackageKey)}\"")
-        // 与官方包共用的设备编号。
-        // ANDROID_ID 与包名绑定，本包改了 applicationId 后系统会分配不同的 ID，
-        // 云端按 install_id 的白名单校验（如共享标签库下载）会失败。
-        // 这里写入官方包的编号，让两个版本在同一账号下行为一致。
+        // 不再内置任何设备编号。
+        // 云端按 install_id 累计共享标签数，满 3 张即放行下载；上传与下载用的是
+        // 同一个 ID，所以每台设备用自己的编号即可自行获得权限。
+        // 预置一个固定编号会让所有安装者共用它，既占用他人的额度，也让
+        // 别人的共享记录落到别人头上。
+        // 需要与官方版共用同一编号时，在设置页手动填写即可（覆盖本机编号）。
         val sharedInstallId = localProperties.getProperty("SHARED_INSTALL_ID", "")
         buildConfigField("String", "SHARED_INSTALL_ID", "\"${escapeBuildConfigString(sharedInstallId)}\"")
 

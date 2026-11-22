@@ -26,7 +26,8 @@
   —— 那是上游原有的 SPP 通路，本项目没动它
 - ❌ 不要改仓库内 `gradle/` 目录（见 §8 第3条）
 - ❌ 不要把 `local.properties` 提交进 git
-- ❌ 不要把 `SHARED_INSTALL_ID` 的值写进任何被 git 追踪的文件
+- ❌ 不要在 `local.properties` 里预置设备编号 —— 每台设备用自己的编号，自行获得下载权限
+- ❌ 不要把 `local.properties` 的任何值写进被 git 追踪的文件
 - ❌ 不要在写卡进度上反复汇报（用户明确要求）
 - ❌ 不要重新发明 §4 里已经定死的协议细节（整帧写 / SAM 独立下发 / HKDF salt）
 
@@ -218,25 +219,41 @@ node -e 'const s=require("fs").readFileSync("app/src/main/java/com/m0h31h31/bamb
 
 ### 5.3 设备编号（install_id）
 
-`ANDROID_ID` 由系统按「包名 + 用户 + 设备」生成，改 `applicationId` 后必然不同，
-云端按 `install_id` 做的**白名单校验**（共享标签库下载）会拒绝。
-
-解法链路：
+**服务端权限规则（2026-11-22 实测确认）**：
 
 ```
-local.properties: SHARED_INSTALL_ID
-  → BuildConfig.SHARED_INSTALL_ID
-  → MainActivity.applySharedInstallId()   启动时写入 legacy_install_id
-  → AnalyticsReporter.getInstallId()      优先读 legacy_install_id
+GET https://brr.jacki.cn/api/public/tags/can-download?install_id=<ID>
+  → {"allowed":true,"reason":""}                                      有权限
+  → {"allowed":false,"reason":"您尚未共享任何标签，请先开启自动共享并扫描至少三张标签后再下载"}
 ```
 
-**安全性**：该常量只在 `local.properties`（已 gitignore），**全分支扫描确认不在任何
-git 追踪文件里**。别人 clone fork 自己编译 → 常量是空串 → 代码首行
-`if (shared.isEmpty()) return` → 自动回退自己的 ANDROID_ID。**公开仓库不泄露。**
-唯一泄露路径是分发编译好的 APK（常量硬编码在 BuildConfig）。
+**没有白名单**。服务端按 `install_id` 累计该 ID 共享过的标签数，**满 3 张即放行下载**。
+所以每台设备用自己的编号、共享 3 张标签就能自行获得下载权限 —— 不需要与他人共用编号。
 
-后续又加了「设置页可编辑/可清空」：手动设过之后记 `install_id_manual` 标记，
-构建期默认值不再覆盖。两套 UI（Modern / MIUIX）都接上了。
+上传与下载用的是**同一个** ID（都是 `AnalyticsReporter.getInstallId(context)`）：
+
+| 用途 | 参数名 | 位置 |
+|---|---|---|
+| 上传标签 | `device_id` | `utils/TagShareUploader.kt:54`、`:137` |
+| 检查下载权 | `install_id` | `MainActivity.kt:2566` |
+| 下载标签包 | `install_id` | `MainActivity.kt:2601` |
+| ZIP 解密密码 | `SHA-256(install_id : TAG_PACKAGE_KEY)` 前 8 字节 | `MainActivity.kt:2439` |
+
+**ID 取值优先级**（`AnalyticsReporter.getInstallId`）：
+
+```
+手动指定（设置页）  >  本机自动生成（install_id 存储 → ANDROID_ID → Widevine → 随机 UUID）
+```
+
+**不要预置任何设备编号。** 早期版本在 `local.properties` 里硬编码了一个固定 ID，
+结果所有安装者共用它 —— 既占用他人额度，又把他人的共享记录算到他人头上。
+现在 `local.properties` 里 `SHARED_INSTALL_ID` 一行是注释掉的，默认留空。
+
+`SHARED_INSTALL_ID` 这个构建项**仍然保留**（`BuildConfig.SHARED_INSTALL_ID`），
+但只有显式配置时才生效，且用户手动指定过就跳过。发行方若想统一编号可以自行配置。
+
+用户想与官方版共用同一编号时，在设置页「设备编号 → 修改」里粘贴官方版显示的值即可。
+两套 UI（Modern / MIUIX）都接上了。
 
 ### 5.4 共享标签库解密
 
@@ -246,17 +263,18 @@ PETG Basic 5237 / PLA Lite 3650 等）。
 
 ### 5.5 local.properties（不在 git 里，gitignored）
 
-| 键 | 缺失后果 |
-|---|---|
-| `TAG_PACKAGE_KEY` | 共享标签库下载后无法解密/解压 |
-| `EVENT_API_KEY` | 事件上报被拒 |
-| `SHARED_INSTALL_ID` | 云端 install_id 白名单校验失败，共享库下不了 |
+| 键 | 必需 | 缺失后果 |
+|---|---|---|
+| `TAG_PACKAGE_KEY` | 是 | 共享标签库下载后无法解密/解压 |
+| `EVENT_API_KEY` | 是 | 事件上报被拒 |
+| `SHARED_INSTALL_ID` | 否（默认注释掉） | 不影响下载 —— 每台设备用自己的编号，自行获得权限 |
 
-`rebase` 不会动这个文件，但换机器 / 误删必须补回。同步脚本启动时会检查这三个键。
+`rebase` 不会动这个文件，但换机器 / 误删必须补回前两个键。
+同步脚本启动时会检查这两个必需键。
 
 ### 5.6 应用身份相关
 
-- `applicationId` 改了 → `ANDROID_ID` 变了 → 用 `SHARED_INSTALL_ID` 沿用官方值
+- `applicationId` 改了 → `ANDROID_ID` 变了 → 但这**不影响**下载权限（权限按 ID 累计共享数）
 - 官方包与 PN532 包**并存**，官方更新不会覆盖本版本
 
 ---
@@ -323,7 +341,7 @@ be0746e  chore(sync): publish the PN532 build to its own GitHub repository
 脚本行为：git 身份检查 → local.properties 三键检查 → rebase 中断态检查 →
 探测上游（Gitee 直连优先，失败自动试 GitHub 并扫 7890/10809/1080/7897/8080/10808）→
 fetch → 打印新增提交与改动文件 → stash → 打回滚 tag `local/pn532-<版本>-<时间戳>` →
-rebase → stash pop → 合并后自检（applicationId / PN532 关键文件 / SHARED_INSTALL_ID）→
+rebase → stash pop → 合并后自检（applicationId / PN532 关键文件 / TAG_PACKAGE_KEY）→
 冲突标记扫描 → 编译 → 打印安装命令。
 
 **出冲突时**：
