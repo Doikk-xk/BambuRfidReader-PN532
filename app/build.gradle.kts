@@ -34,6 +34,12 @@ android {
         buildConfigField("String", "EVENT_API_KEY", "\"${escapeBuildConfigString(eventApiKey)}\"")
         val tagPackageKey = localProperties.getProperty("TAG_PACKAGE_KEY", "")
         buildConfigField("String", "TAG_PACKAGE_KEY", "\"${escapeBuildConfigString(tagPackageKey)}\"")
+        // 与官方包共用的设备编号。
+        // ANDROID_ID 与包名绑定，本包改了 applicationId 后系统会分配不同的 ID，
+        // 云端按 install_id 的白名单校验（如共享标签库下载）会失败。
+        // 这里写入官方包的编号，让两个版本在同一账号下行为一致。
+        val sharedInstallId = localProperties.getProperty("SHARED_INSTALL_ID", "")
+        buildConfigField("String", "SHARED_INSTALL_ID", "\"${escapeBuildConfigString(sharedInstallId)}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

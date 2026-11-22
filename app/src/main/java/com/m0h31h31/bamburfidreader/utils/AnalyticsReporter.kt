@@ -18,6 +18,8 @@ data class UpdateInfo(
 
 object AnalyticsReporter {
     private const val PREFS_NAME = "analytics_prefs"
+    /** 与官方包（com.m0h31h31.bamburfidreader）共用的设备编号。 */
+    private const val KEY_LEGACY_INSTALL_ID = "legacy_install_id"
     private const val KEY_INSTALL_REPORTED = "install_reported"
 
     internal fun apiKeyHeaders(): Map<String, String> = buildMap {
@@ -30,9 +32,18 @@ object AnalyticsReporter {
      * 保留有效 ANDROID_ID；异常时优先使用应用范围的 Widevine 派生 UUID。
      * 已保存的编号优先，避免后续系统返回值变化导致身份切换。
      * Widevine 也不可用时才使用随机 UUID，此兜底无法保证清除数据或重装后不变。
+     *
+     * 注意：ANDROID_ID 与包名绑定。PN532 版改了 applicationId，系统会分配不同的
+     * ANDROID_ID，导致云端白名单校验（共享标签库下载）不通过。
+     * 因此这里优先使用 [KEY_LEGACY_INSTALL_ID] 里保存的官方包编号。
      */
     fun getInstallId(context: Context): String {
         val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+        // 与官方包共用同一身份标识：PN532 版包名不同，ANDROID_ID 也不同，
+        // 必须显式沿用官方包的编号，否则共享标签库等云端校验会失败。
+        prefs.getString(KEY_LEGACY_INSTALL_ID, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
         return StableDeviceId.getOrCreate(
             readStored = { prefs.getString("install_id", null) },
             readAndroidId = {
@@ -59,6 +70,21 @@ object AnalyticsReporter {
             }
         )
     }
+
+    /**
+     * 写入与官方包一致的设备编号（仅 PN532 版需要）。
+     * 用于让云端按 install_id 的白名单校验通过，例如共享标签库下载。
+     */
+    fun setLegacyInstallId(context: Context, id: String) {
+        val trimmed = id.trim()
+        if (trimmed.isEmpty()) return
+        val prefs = context.getSharedPreferences("device_identity", Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LEGACY_INSTALL_ID, trimmed).commit()
+        com.m0h31h31.bamburfidreader.logging.logDebug("Device identity override set: $trimmed")
+    }
+
+    /** 读取当前生效的设备编号（供 UI 显示）。 */
+    fun currentInstallId(context: Context): String = getInstallId(context)
 
     /**
      * 上报异常标签到服务器。
