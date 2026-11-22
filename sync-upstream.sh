@@ -310,15 +310,28 @@ if [ "$DO_BUILD" -eq 1 ]; then
   fi
 fi
 
-# --- 9. 备份到 fork ---------------------------------------------------------
+# --- 9. 备份到远端 ---------------------------------------------------------
 if [ "$DO_PUSH" -eq 1 ]; then
-  say "推送到 fork 备份"
-  if git push fork "$BRANCH:$BRANCH" 2>&1 | tail -3; then
-    ok "已推送到 fork/$BRANCH"
-  else
-    warn "推送到 fork 失败 (GitHub 需要代理)"
-    echo "    可先设置: git config http.https://github.com/.proxy http://127.0.0.1:7890"
-  fi
+  # fork = GitHub 上的自己的 fork; gitee = Gitee 上自己的仓库
+  for target in fork gitee; do
+    if ! git remote get-url "$target" >/dev/null 2>&1; then
+      warn "远端 $target 未配置，跳过"
+      continue
+    fi
+    say "推送到 $target 备份"
+    if git push "$target" "$BRANCH:$BRANCH" 2>&1 | tail -3; then
+      ok "已推送到 $target/$BRANCH"
+    else
+      warn "推送到 $target 失败"
+      if [ "$target" = "gitee" ]; then
+        echo "    Gitee 需要私人令牌: 设置 -> 私人令牌 -> 生成新令牌"
+        echo "    勾选 projects 权限即可。推送时会在弹窗里填用户名和令牌。"
+      else
+        echo "    GitHub 需要代理，可先设置:"
+        echo "        git config http.https://github.com/.proxy http://127.0.0.1:7890"
+      fi
+    fi
+  done
 fi
 
 ok "全部完成"
