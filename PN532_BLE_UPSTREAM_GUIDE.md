@@ -7,15 +7,28 @@
 
 ---
 
+## 零、当前状态（2026-11-22）
+
+| 项目 | 状态 |
+|---|---|
+| 上游最新版 | **v3.2.4**（commit `675832e`），Gitee / GitHub 两边一致 |
+| 本地分支 | `feature/pn532-ble`，在 v3.2.4 之上领先 7 个提交 |
+| 仓库完整度 | 已 `fetch --unshallow`，完整历史 209 个提交（**不要退回浅克隆**） |
+| 最近验证 | 模拟 v3.2.5 全流程演练通过：rebase 成功 → 自动解冲突 → 编译成功出 APK |
+
+**结论：目前上游没有新版本，不需要做升级动作。**
+
+---
+
 ## 一、仓库结构
 
 | 分支 / 远端 | 说明 |
 |---|---|
-| `upstream/master` | 上游主线（GitHub `m0h31h31/3DPrint-Filament-RFID-Tool`） |
-| `feature/pn532-ble` | **本地开发分支**，包含全部 PN532 蓝牙改动 |
+| `origin` | **Gitee 镜像 `JackMoHeiHei/BambuRfidReader`** —— 基准，国内直连，最快 |
+| `gh-upstream` | GitHub `m0h31h31/3DPrint-Filament-RFID-Tool` —— 降级备选，需代理 |
+| `fork` | 自己的 GitHub fork `Doikk-xk/...` —— 备份用 |
+| `feature/pn532-ble` | **本地开发分支**，含全部 PN532 蓝牙改动 |
 | `master` | 与上游同步的干净主线，不含本地改动 |
-| `fork` | 你自己的 GitHub fork（`Doikk-xk/...`），用于备份/推送 |
-| `origin` | Gitee 镜像，只读参考 |
 
 关键原则：**PN532 改动全部是「增量提交」，不修改上游逻辑本身**。
 因此 rebase 时冲突只可能出现在下面这几个文件，且位置固定：
@@ -50,30 +63,54 @@ cd G:/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
 
 脚本会依次完成：
 
-1. `git fetch upstream --tags --prune` 拉取上游
-2. 打印上游新增了哪些提交
-3. 工作区不干净时自动 `git stash push -u`
-4. `git rebase upstream/master` 把上游提交垫到下面，你的改动重放在最上面
-5. 自动 `git stash pop` 恢复
-6. 编译 APK，输出安装命令
+1. 自检：git 身份、`local.properties` 必需键、是否处于 rebase 中断状态
+2. 探测上游：Gitee 直连优先；Gitee 不通则自动试 GitHub，并自动探测
+   代理端口（7890 / 10809 / 1080 / 7897 / 8080 / 10808）
+3. `git fetch --tags --prune`
+4. 打印上游新增了哪些提交、动了哪些文件
+5. 工作区不干净时自动 `git stash push -u`
+6. 打回滚 tag：`local/pn532-<上游版本>-<时间戳>`
+7. `git rebase origin/master`（上游提交垫底，PN532 改动重放在最上）
+8. `git stash pop` 恢复
+9. 合并后自检：`applicationId` 是否被上游改掉、PN532 关键文件是否还在、
+   `SHARED_INSTALL_ID` 配置是否还在
+10. 编译前扫描冲突标记残留 → 编译 APK → 打印安装命令
 
 常用参数：
 
 ```bash
 ./sync-upstream.sh --check      # 只看上游有没有新版本，不动工作区
 ./sync-upstream.sh --no-build   # 合并但不编译
+./sync-upstream.sh --push       # 合并后推送到自己的 fork 备份
+./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测（只走 Gitee）
 ```
 
 ### 出冲突了怎么办
 
-脚本会停下来并列出冲突文件。手动处理：
+脚本会停下来并列出冲突文件。**第一步先试半自动解决**：
+
+```bash
+node resolve-conflicts.js      # 自动合并 strings.xml 同名 key 冲突
+git add -A
+git rebase --continue
+```
+
+`resolve-conflicts.js` 的行为：
+- 只自动处理 `strings.xml`（保留双方文案，上游侧重名 key 自动加 `_upstream` 后缀，避免
+  Android 报 Duplicate resources）
+- 其他文件（如 `MainActivity.kt`）保持冲突状态不动，交给人工判断 —— 那类冲突涉及逻辑，
+  盲目合并会引入 bug
+- 结束后扫描全文件重复 key 并提示
+- 保留原文件 CRLF/LF 行尾风格，不会产生整文件行尾 diff
+
+人工处理的完整步骤：
 
 ```bash
 # 1. 看冲突
-grep -n -A5 '^<<<<<<<' app/src/main/java/com/m0h31h31/bamburfidreader/MainActivity.kt
+grep -n -A8 '^<<<<<<<' app/src/main/java/com/m0h31h31/bamburfidreader/MainActivity.kt
 
 # 2. 编辑文件，删掉 <<<<<<< / ======= / >>>>>>> 标记
-#    通常策略：保留 PN532 相关逻辑（HEAD 侧）+ 采纳上游新功能
+#    原则：保留 PN532 相关逻辑（HEAD 侧）+ 采纳上游新功能
 
 #    整个文件取我的版本： git checkout --ours  <文件>
 #    整个文件取上游版本： git checkout --theirs <文件>
@@ -90,9 +127,65 @@ git rebase --abort
 
 解决完重新跑 `./sync-upstream.sh` 即可继续编译。
 
+### 回退
+
+每次合并前脚本都会打一个回滚 tag，输出形如：
+
+```
+local/pn532-3.2.5-20261122-171700
+```
+
+回退：
+
+```bash
+git tag -l "local/pn532-*"
+git reset --hard local/pn532-3.2.5-20261122-171700
+```
+
 ---
 
-## 三、为什么构建配置放在仓库外
+## 三、几个必须知道的坑
+
+### 1. 不要用浅克隆
+
+早期这个仓库是 `--depth` 浅克隆，历史边界正好卡在 v3.2.4。一旦上游改写历史，
+rebase 就会断。现已 `fetch --unshallow` 补成完整克隆（209 个提交），**别再退回浅克隆**。
+
+### 2. git 必须配好身份
+
+没配 `user.email` 时，`git rebase --continue` 会直接失败：
+
+```bash
+git config user.email "you@example.com"
+git config user.name  "Your Name"
+```
+
+脚本启动时会检查并提示。
+
+### 3. 冲突标记残留会让编译失败
+
+`strings.xml` 里残留 `<<<<<<<` 会导致 XML 解析失败，且往往报错位置离现场很远。
+脚本在编译前会自动全仓库扫描（兼容 CRLF 行尾），发现残留就终止编译。
+自己手动排查：
+
+```bash
+git grep -n -E '^(<<<<<<<|>>>>>>>|=======)' -- .
+```
+
+### 4. local.properties 不在 git 里
+
+`local.properties` 已被 `.gitignore`，rebase 不会动它，但**换机器或误删后必须补回**，
+否则以下功能失效：
+
+| 键 | 作用 | 缺失后果 |
+|---|---|---|
+| `TAG_PACKAGE_KEY` | 共享标签库包解密密钥 | 下载后无法解压 / 导入失败 |
+| `EVENT_API_KEY` | 事件上报 | 上报被拒 |
+| `SHARED_INSTALL_ID` | 与官方包共用的设备编号 | 云端 install_id 白名单校验失败，共享库下载不了 |
+
+脚本启动时会检查这三项并提示。
+
+### 5. 构建配置放在仓库外
 
 上游的 `gradle/gradle-daemon-jvm.properties` 要求使用 **JetBrains 厂商**的 JDK。
 本机 PyCharm 自带的 JBR 报告的 vendor 是 `"JetBrains s.r.o."`，Gradle 精确匹配不上会直接失败。
@@ -107,7 +200,7 @@ git rebase --abort
 
 这样每次 rebase 都不会在 `gradle/` 目录产生冲突。
 
-### 手动编译命令
+### 6. 手动编译命令
 
 ```bash
 cd G:/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
@@ -119,7 +212,7 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 
 产物：`app/build/outputs/apk/debug/app-debug.apk`
 
-### 安装到手机
+### 7. 安装到手机
 
 ```bash
 /g/windows/workbuddy/toolchain/android-sdk/platform-tools/adb.exe \
@@ -134,7 +227,7 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 git push fork feature/pn532-ble:feature/pn532-ble
 ```
 
-推上去后，即使本地磁盘出问题，代码也在 GitHub 上存着。
+推上去后，即使本地磁盘出问题，代码也在 GitHub 上存着。`sync-upstream.sh --push` 会自动做这一步。
 
 ---
 

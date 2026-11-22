@@ -9,6 +9,7 @@ REM  Usage:
 REM     double-click this file
 REM     sync-upstream.bat --check      show upstream changes only
 REM     sync-upstream.bat --no-build   merge but skip the build
+REM     sync-upstream.bat --push       merge then push backup to my fork
 REM ===================================================================
 setlocal enabledelayedexpansion
 
@@ -37,12 +38,16 @@ if %RC% NEQ 0 (
     echo   Sync stopped with errors.
     echo.
     echo   How to recover:
-    echo     [A] Conflict - edit the file, then run:
+    echo     [A] Conflict - try the auto helper first:
+    echo         node resolve-conflicts.js
+    echo         git add -A
+    echo         git rebase --continue
+    echo     [B] Still conflicting - edit the file by hand, then run:
     echo         git add ^<file^>
     echo         git rebase --continue
-    echo     [B] Abort this update entirely:
+    echo     [C] Abort this update entirely:
     echo         git rebase --abort
-    echo     [C] Network - Gitee needs no proxy; GitHub needs the proxy on.
+    echo     [D] Network - Gitee needs no proxy; GitHub needs the proxy on.
     echo.
     echo   Full guide: PN532_BLE_UPSTREAM_GUIDE.md
     goto :done
