@@ -3,32 +3,32 @@
 > **给接手这个项目的 AI 读。** 这份文档是自包含的：读完就能接手，
 > 不需要翻聊天记录、不需要问人。事实已全部核对到 2026-11-22 的实际磁盘状态。
 >
-> 如果你只做一件事，先读 **§2 不可回退的坑**——那里每一条都是踩出来的，
+> 如果你只做一件事，先读 **§4 不可回退的坑**——那里每一条都是踩出来的，
 > 改回去会直接失败。
 
 ---
 
-## 0.5 接手后请照此执行
+## 1. 接手后请照此执行
 
 **你要做的（收到任务后按此顺序）**：
 
-1. 先读 §2（不可回退的坑）+ §3（架构）+ §8（快速上手清单）
+1. 先读 §2（不可回退的坑）+ §5（架构）+ §10（快速上手清单）
 2. 动手前跑 `./sync-upstream.sh --check` —— 确认上游期间有没有发新版本
-3. 改代码 → 编译（§1.3 命令，`--offline` 必须加）
+3. 改代码 → 编译（§3.3 命令，`--offline` 必须加）
 4. 提交（**不要 `--amend`**，新开一个 commit）
 5. 推送：`git push github-pn532 feature/pn532-ble:refs/heads/main`
-   （分支名映射见 §4.5，别推成 `feature/pn532-ble`）
+   （分支名映射见 §6.5，别推成 `feature/pn532-ble`）
 
 **你不要做的**：
 
 - ❌ 不要修改上游 `master` 分支或上游基线提交
 - ❌ 不要动 `app/src/main/java/com/m0h31h31/bamburfidreader/bluetooth/BluetoothSppClient.kt`
   —— 那是上游原有的 SPP 通路，本项目没动它
-- ❌ 不要改仓库内 `gradle/` 目录（见 §6.3）
+- ❌ 不要改仓库内 `gradle/` 目录（见 §8 第3条）
 - ❌ 不要把 `local.properties` 提交进 git
 - ❌ 不要把 `SHARED_INSTALL_ID` 的值写进任何被 git 追踪的文件
 - ❌ 不要在写卡进度上反复汇报（用户明确要求）
-- ❌ 不要重新发明 §2 里已经定死的协议细节（整帧写 / SAM 独立下发 / HKDF salt）
+- ❌ 不要重新发明 §4 里已经定死的协议细节（整帧写 / SAM 独立下发 / HKDF salt）
 
 **用户沟通风格**：
 
@@ -39,7 +39,7 @@
 
 ---
 
-## 0. 一句话背景
+## 2. 一句话背景
 
 给开源 Android 应用 `BambuRfidReader`（拓竹/3D 打印耗材 RFID 标签读写工具）
 **新增 PN532 蓝牙读卡器支持**。原版只支持手机 NFC 和蓝牙 SPP 串口透传，
@@ -51,9 +51,9 @@
 
 ---
 
-## 1. 环境与代码位置
+## 3. 环境与代码位置
 
-### 1.1 代码
+### 3.1 代码
 
 | 项 | 路径 |
 |---|---|
@@ -65,7 +65,7 @@
 
 **所有东西都在 G 盘，C 盘不留文件**（用户硬性要求）。
 
-### 1.2 构建工具链（全在仓库外）
+### 3.2 构建工具链（全在仓库外）
 
 | 工具 | 路径 |
 |---|---|
@@ -75,7 +75,7 @@
 | adb | `G:/windows/workbuddy/toolchain/android-sdk/platform-tools/adb.exe` |
 | Gradle 依赖缓存 | `G:/windows/workbuddy/toolchain/gradle-home` |
 
-### 1.3 编译命令
+### 3.3 编译命令
 
 ```bash
 cd /g/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
@@ -87,7 +87,7 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 
 `--offline` 必须加（依赖已缓存；联网会因代理卡住）。
 
-### 1.4 应用标识
+### 3.4 应用标识
 
 | 键 | 值 |
 |---|---|
@@ -98,13 +98,13 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 | versionCode / Name | 324 / `3.2.4` |
 
 改 `applicationId` 是为了和官方包（`com.m0h31h31.bamburfidreader`）同时装在手机上。
-**副作用见 §3.6**。
+**副作用见 §5.6**。
 
 ---
 
-## 2. 不可回退的坑（最重要）
+## 4. 不可回退的坑（最重要）
 
-### 2.1 PN532 HSU 帧绝不能拆开写
+### 4.1 PN532 HSU 帧绝不能拆开写
 
 帧一旦在链路中间被拆开（哪怕间隔 0ms），芯片丢弃整帧，**连 ACK 都不返回**。
 症状极具迷惑性：能答固件版本，但寻卡永远无响应、射频场不开、蓝灯灭。
@@ -114,23 +114,35 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 - 实测协商结果 = 124（载荷 121）
 - 实现位置：`BluetoothBleClient.kt` — `REQUESTED_MTU = 124`（L59）、`writeChunks()`（L511）
 
-### 2.2 SAM 必须显式单独下发
+### 4.2 SAM 必须显式单独下发
 
 SAM 处于 IRQ 模式（mode=`0x03`）时 `InListPassiveTarget` **完全沉默**；
 Normal 模式（mode=`0x01`）才能寻卡。
 
 初始化顺序必须是三步各自独立成帧：**唤醒 → GetFirmwareVersion → SAM(Normal)**。
 注意：唤醒帧里虽然也内嵌了一帧 SAMConfiguration，但那一帧在链路上不可靠，
-必须单独再发一次。实现见 `Pn532Manager.kt` L53-L63。
+必须单独再发一次。
 
-### 2.3 唤醒序列前导与帧分两次写
+PN532 命令与响应码配对（`expectedResponse` 用于精确匹配，防止拿到迟到帧）：
+
+| 命令 | 命令码 | 期望响应码 |
+|---|---|---|
+| `SAMConfiguration` | `0x14` | `0x15` |
+| `InListPassiveTarget` | `0x4A` | `0x4B` |
+| `InDataExchange` | `0x40` | `0x41` |
+| `GetFirmwareVersion` | `0x02` | `0x03` |
+
+实现见 `Pn532Manager.kt` L53-L63（SAM）、`Pn532MifareCard.kt`（InDataExchange
+已补 `expectedResponse = 0x41`）。
+
+### 4.3 唤醒序列前导与帧分两次写
 
 ```
 前导: 55 55 00×16                 (16 字节，一次写)
 帧  : 00 00 FF 03 FD D4 14 01 17 00  (10 字节，另一次写)
 ```
 
-### 2.4 卡片密钥是 HKDF 派生的，不是 FF
+### 4.4 卡片密钥是 HKDF 派生的，不是 FF
 
 来源 `NfcTagReader.kt` 的 `deriveBambuKeys`（L99）。
 **salt 恰好 16 字节**（`HKDF_SALT`，L19）：
@@ -142,27 +154,27 @@ Normal 模式（mode=`0x01`）才能寻卡。
 按 UID 派生每个扇区的 KeyA / KeyB。info 串是 `RFID-A\0` / `RFID-B\0`（L26/L27）。
 **salt 多写或少写一个字节会导致全部认证失败**（返回 `0x14`）——这个坑误诊过一次。
 
-### 2.5 GATT 服务/特征自适应
+### 4.5 GATT 服务/特征自适应
 
 - JDY 方案：`FFE0` / `FFE1`
 - HC 方案：`FF00` / `FF01`(notify) / `FF02`(write + notify)
 - 实测该模块（`Minicopy(BLE)`）用 HC 方案
 - `FF02` 自带 notify 属性，但订阅它会报 `Write Not Permitted` —— **只能当写入特征**
 
-### 2.6 冲突标记残留会毁掉编译
+### 4.6 冲突标记残留会毁掉编译
 
 上游 rebase 后若残留 `<<<<<<< / ======= / >>>>>>>`，Android XML 解析报错位置
 离现场极远，排查成本高。同步脚本已在编译前全仓库扫描拦截。
 另：**仓库文件是 CRLF 行尾**，用 `/^<<<<<<< [^\n]*\n/` 匹配永远不中 ——
 `resolve-conflicts.js` 已改为 `/^<<<<<<< /` 判定并保留原 EOL。
 
-### 2.7 仓库必须是完整克隆
+### 4.7 仓库必须是完整克隆
 
 早期是 shallow clone（历史边界正好卡在 v3.2.4，8 个提交），
 上游一旦改写历史 rebase 直接断。已 `git fetch --unshallow origin --tags` 补成完整克隆（209 提交）。
 **换机器克隆务必用完整克隆，不要 `--depth`。**
 
-### 2.8 git 必须配好身份
+### 4.8 git 必须配好身份
 
 没配 `user.email` 时 `git rebase --continue` 直接失败：
 
@@ -171,7 +183,7 @@ git config user.name  "Doikk"
 git config user.email "doikk@users.noreply.github.com"
 ```
 
-### 2.9 上游 `MainActivity.kt` 含 1 个 NUL 字节
+### 4.9 上游 `MainActivity.kt` 含 1 个 NUL 字节
 
 上游注释里写了 SQLite 魔数 `"SQLite format 3\0"`。
 **grep 会把这个文件判成二进制**（`grep` 直接不输出）。用 node 读文件绕过：
@@ -184,9 +196,9 @@ node -e 'const s=require("fs").readFileSync("app/src/main/java/com/m0h31h31/bamb
 
 ---
 
-## 3. 架构与功能实现
+## 5. 架构与功能实现
 
-### 3.1 BLE 文件职责
+### 5.1 BLE 文件职责
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
@@ -198,13 +210,13 @@ node -e 'const s=require("fs").readFileSync("app/src/main/java/com/m0h31h31/bamb
 | `Pn532DeviceMatcher.kt` | 94 | 按名称/广播特征识别 PCR532 |
 | `Pn532Transport.kt` | 18 | 传输接口抽象 |
 
-### 3.2 设备识别（`Pn532DeviceMatcher`）
+### 5.2 设备识别（`Pn532DeviceMatcher`）
 
 按**设备名 + 广播服务特征**双重判定，只上报 PCR532/PN532。
 扫描到就弹连接确认框，**不渲染通用设备列表**。
 `MainActivity.bondedBluetoothDevices()` 同样过滤 —— 这是「列表还是出现别的设备」的根因。
 
-### 3.3 设备编号（install_id）
+### 5.3 设备编号（install_id）
 
 `ANDROID_ID` 由系统按「包名 + 用户 + 设备」生成，改 `applicationId` 后必然不同，
 云端按 `install_id` 做的**白名单校验**（共享标签库下载）会拒绝。
@@ -226,13 +238,13 @@ git 追踪文件里**。别人 clone fork 自己编译 → 常量是空串 → �
 后续又加了「设置页可编辑/可清空」：手动设过之后记 `install_id_manual` 标记，
 构建期默认值不再覆盖。两套 UI（Modern / MIUIX）都接上了。
 
-### 3.4 共享标签库解密
+### 5.4 共享标签库解密
 
 依赖 `local.properties` 里的 `TAG_PACKAGE_KEY`（从官方 APK 的 BuildConfig 用 `dexdump` 提取）。
 缺失则下载后无法解密/解压。实测导入成功 **37322 条**（PLA Basic 15172 / PLA Matte 5769 /
 PETG Basic 5237 / PLA Lite 3650 等）。
 
-### 3.5 local.properties（不在 git 里，gitignored）
+### 5.5 local.properties（不在 git 里，gitignored）
 
 | 键 | 缺失后果 |
 |---|---|
@@ -242,16 +254,16 @@ PETG Basic 5237 / PLA Lite 3650 等）。
 
 `rebase` 不会动这个文件，但换机器 / 误删必须补回。同步脚本启动时会检查这三个键。
 
-### 3.6 应用身份相关
+### 5.6 应用身份相关
 
 - `applicationId` 改了 → `ANDROID_ID` 变了 → 用 `SHARED_INSTALL_ID` 沿用官方值
 - 官方包与 PN532 包**并存**，官方更新不会覆盖本版本
 
 ---
 
-## 4. Git 与远端
+## 6. Git 与远端
 
-### 4.1 远端（5 个）
+### 6.1 远端（5 个）
 
 | 名称 | 地址 | 角色 |
 |---|---|---|
@@ -261,7 +273,7 @@ PETG Basic 5237 / PLA Lite 3650 等）。
 | `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | 上游的 fork，额外备份 |
 | `gitee` | `gitee.com/doikk/BambuRfidReader-PN532` | 备用备份（需私人令牌） |
 
-### 4.2 代理
+### 6.2 代理
 
 GitHub 需要代理，Gitee 不需要：
 
@@ -272,7 +284,7 @@ git config http.https://github.com/.httpsproxy http://127.0.0.1:7890
 
 代理端口**实际是 7890**（之前配置的 13441 已失效，环境变量里的 10864 对 GitHub 返 502）。
 
-### 4.3 提交历史（12 个，全在 `feature/pn532-ble`）
+### 6.3 提交历史（12 个，全在 `feature/pn532-ble`）
 
 ```
 732d5c9  feat(bluetooth): add PN532 BLE support for M0 RFID PN532   ← 主体
@@ -291,7 +303,7 @@ be0746e  chore(sync): publish the PN532 build to its own GitHub repository
 
 相对上游：**32 文件，+3814 行 / -184 行**。
 
-### 4.4 同步工具（仓库根目录）
+### 6.4 同步工具（仓库根目录）
 
 | 文件 | 用途 |
 |---|---|
@@ -327,7 +339,7 @@ git rebase --abort                 # 搞不定就退回
 
 **回退**：`git reset --hard local/pn532-<版本>-<时间戳>`（每次合并前自动打）。
 
-### 4.5 GitHub 建仓权限（踩过的坑）
+### 6.5 GitHub 建仓权限（踩过的坑）
 
 - GitHub 连接器（`mcp__github__create_repository`）**无建仓权限**：
   `POST /user/repos` 返回 `403 Resource not accessible by integration`
@@ -339,7 +351,7 @@ git rebase --abort                 # 搞不定就退回
 - ⚠️ `github-pn532` 默认分支是 `main`，推送必须写成
   `feature/pn532-ble:refs/heads/main`，不能直接 `$BRANCH:$BRANCH`
 
-### 4.6 Gitee 待办
+### 6.6 Gitee 待办
 
 `gitee.com/doikk/BambuRfidReader-PN532` 在 API 上返回 `Not Found Project` ——
 **仓库尚未创建**。需用户手动建仓（公开、**不要初始化 README**）+ 生成
@@ -347,7 +359,7 @@ git rebase --abort                 # 搞不定就退回
 
 ---
 
-## 5. 本机环境注意事项
+## 7. 本机环境注意事项
 
 - **bash 缺 coreutils**（head/grep/tail/mkdir 不可用）→ 用 node 脚本代替
 - **node 走 cmd.exe**，不认 MSYS 路径 `/c/...` → 用 `C:\...`
@@ -368,7 +380,7 @@ git rebase --abort                 # 搞不定就退回
 
 ---
 
-## 6. 硬性约束
+## 8. 硬性约束
 
 1. **所有文件放 G 盘**，C 盘不留任何产物
 2. **不修改上游逻辑** —— 改动必须能增量 rebase
@@ -381,16 +393,16 @@ git rebase --abort                 # 搞不定就退回
 
 ---
 
-## 7. 待办 / 可接手的方向
+## 9. 待办 / 可接手的方向
 
 | 优先级 | 事项 | 状态 |
 |---|---|---|
 | 高 | Gitee 仓库创建 + 私人令牌 → 推 `gitee` 远端 | 等用户操作 |
-| 中 | 写卡闭环（`0xA0` 写块第一步返回 `0x7F`） | 未解决，见 §7.1 |
+| 中 | 写卡闭环（`0xA0` 写块第一步返回 `0x7F`） | 未解决，见 §9.1 |
 | 中 | 手机无线调试端口变化导致无法安装验证 | 需要用户给新 IP:端口 |
 | 低 | `toolchain/` 下 30 个历史编译日志可清理 | 可选 |
 
-### 7.1 写卡未闭环的已知线索
+### 9.1 写卡未闭环的已知线索
 
 - 卡片所有扇区 trailer 相同：`00×6 | 87 87 87 69 | 00×6`
   → **KeyA 只有读权限**，写操作需要 KeyB（`0x61`）
@@ -400,7 +412,7 @@ git rebase --abort                 # 搞不定就退回
 
 ---
 
-## 8. 快速上手清单
+## 10. 快速上手清单
 
 接手后按这个顺序做，5 分钟内可进入状态：
 
@@ -431,7 +443,7 @@ adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
-## 9. 参考资料
+## 11. 参考资料
 
 | 资源 | 地址 |
 |---|---|
