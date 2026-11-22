@@ -2,17 +2,21 @@
 
 ---
 
-# 📱 3DPrint-Filament-RFID-Tool
+# 📱 BambuRfidReader · PN532 蓝牙版
 
 An Android app for reading, cloning, and managing **3D printer filament RFID tags** directly with your phone — no additional hardware required.
 
 Supports **Bambu Lab**, **Creality**, and **Snapmaker** filament tags.
 
+> **本仓库是 PN532 蓝牙增强版**，基于官方 `v3.2.4` 增量开发，新增 **PCR532 / PN532 蓝牙（BLE）** 读卡支持，
+> 原有 NFC 功能完全不变。包名 `com.m0h31h31.bamburfidreader.pn532`，可与官方版并存安装。
+> 官方版：https://github.com/m0h31h31/3DPrint-Filament-RFID-Tool
+
 ---
 
 ## 📲 Download
 
-👉 [Gitee Releases](https://gitee.com/JackMoHeiHei/BambuRfidReader/releases) &nbsp;&nbsp; 👉 [GitHub Releases](https://github.com/m0h31h31/3DPrint-Filament-RFID-Tool/releases)
+👉 [GitHub Releases (v3.2.4-pn532)](https://github.com/Doikk-xk/BambuRfidReader-PN532/releases/tag/v3.2.4-pn532) &nbsp;&nbsp; 👉 [Gitee 仓库](https://gitee.com/doikk/BambuRfidReader-PN532)
 
 ---
 
@@ -21,9 +25,12 @@ Supports **Bambu Lab**, **Creality**, and **Snapmaker** filament tags.
 - Android 9.0+
 - **One of** the following read sources:
   - Phone NFC with **Mifare Classic** read/write support (default), **or**
-  - External **PN532 module + Bluetooth SPP transparent module** (HC-05/06/08 etc.), selected in *Misc → Bluetooth PN532 Reader*
+  - External **PN532 module + Bluetooth SPP transparent module** (HC-05/06/08 etc.), selected in *Misc → Bluetooth PN532 Reader*, **or**
+  - **PCR532 / PN532 over Bluetooth LE (BLE)** — new in this build
 
 > Most mid-range and flagship Android phones support Mifare Classic. Some phones (e.g. certain Pixel and Samsung models) may only support detection but not full read/write due to hardware limitations. The Bluetooth PN532 option is an alternative read source for those cases; pair the module in system Bluetooth settings first, then connect it inside the app.
+>
+> **BLE (PCR532 / PN532)** — the app scans for nearby BLE readers and only surfaces devices it recognises as PCR532/PN532; other BLE peripherals are filtered out. No system pairing is needed, just tap the detected reader to connect. The module speaks PN532 HSU framing over a GATT service, so the app negotiates a 124-byte MTU and writes each frame in one piece — HSU frames must not be split.
 
 ---
 
@@ -95,26 +102,37 @@ A logo model and tag holder are available on MakerWorld — boost it and print o
 ---
 ---
 
-# 📱 3DPrint-Filament-RFID-Tool
+# 📱 BambuRfidReader · PN532 蓝牙版
 
 一款使用 Android 手机直接读取、复制和管理 **3D 打印机耗材 RFID 标签** 的应用，无需任何额外硬件。
 
 支持 **拓竹（Bambu Lab）**、**创想三维（Creality）** 和 **快造（Snapmaker）** 耗材标签。
 
+> **本仓库是 PN532 蓝牙增强版**，基于官方 `v3.2.4` 增量开发，新增 **PCR532 / PN532 蓝牙（BLE）** 读卡支持，
+> 原有 NFC 功能完全不变。包名 `com.m0h31h31.bamburfidreader.pn532`，可与官方版并存安装。
+> 官方版：https://github.com/m0h31h31/3DPrint-Filament-RFID-Tool
+
 ---
 
 ## 📲 下载地址
 
-👉 [Gitee Releases](https://gitee.com/JackMoHeiHei/BambuRfidReader/releases) &nbsp;&nbsp; 👉 [GitHub Releases](https://github.com/m0h31h31/3DPrint-Filament-RFID-Tool/releases)
+👉 [GitHub Releases (v3.2.4-pn532)](https://github.com/Doikk-xk/BambuRfidReader-PN532/releases/tag/v3.2.4-pn532) &nbsp;&nbsp; 👉 [Gitee 仓库](https://gitee.com/doikk/BambuRfidReader-PN532)
 
 ---
 
 ## ✅ 运行环境
 
 - Android 9.0+
-- NFC 且支持 **Mifare Classic** 读写
+- 以下读卡方式任选其一：
+  - 手机 NFC 且支持 **Mifare Classic** 读写（默认方式）
+  - **PN532 模块 + 蓝牙串口透传模块**（HC-05/06/08 等），在「设置 → 蓝牙 PN532 读卡器」中选择
+  - **PCR532 / PN532 蓝牙（BLE）** —— 本版本新增
 
 > 大多数中高端 Android 手机支持 Mifare Classic。部分机型（如部分 Pixel、三星）因硬件限制只能识别标签存在，无法完整读写。
+>
+> **BLE（PCR532 / PN532）** —— 应用会扫描附近的蓝牙设备，但只显示识别为 PCR532/PN532 的读卡器，其它蓝牙设备一律过滤掉。
+> 无需在系统蓝牙设置里配对，找到设备后点一下即可连接。模块走 GATT 上的 PN532 HSU 帧协议，
+> 因此应用会协商 124 字节 MTU 并整帧写入 —— HSU 帧不能拆包，拆开会导致校验失败。
 
 ---
 
