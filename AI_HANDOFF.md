@@ -288,7 +288,7 @@ PETG Basic 5237 / PLA Lite 3650 等）。
 | `origin` | `gitee.com/JackMoHeiHei/BambuRfidReader` | **基准**，Gitee 直连最快 |
 | `gh-upstream` | `github.com/m0h31h31/3DPrint-Filament-RFID-Tool` | 降级备选，需代理 |
 | `github-pn532` | `github.com/Doikk-xk/BambuRfidReader-PN532` | **正式仓库**，`main` = PN532 版 |
-| `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | 上游的 fork，额外备份 |
+| `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | 上游的 fork，**只读留档，不再推分支**（避免上游首页弹推送横幅） |
 | `gitee` | `gitee.com/doikk/BambuRfidReader-PN532` | 备用备份（需私人令牌） |
 
 ### 6.2 代理
@@ -334,7 +334,7 @@ be0746e  chore(sync): publish the PN532 build to its own GitHub repository
 ./sync-upstream.sh          # 一条命令：自检 → fetch → rebase → 自检 → 编译
 ./sync-upstream.sh --check      # 只看上游有没有新版
 ./sync-upstream.sh --no-build   # 合并不编译
-./sync-upstream.sh --push       # 合并后推 github-pn532 / fork / gitee
+./sync-upstream.sh --push       # 合并后推 github-pn532 / gitee（不推 fork）
 ./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测，只走 Gitee
 ```
 

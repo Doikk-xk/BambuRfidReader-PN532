@@ -14,7 +14,7 @@
 #   ./sync-upstream.sh              # 完整流程: fetch -> rebase -> 编译
 #   ./sync-upstream.sh --check      # 只检查是否有新版本，不动工作区
 #   ./sync-upstream.sh --no-build   # 合并但不编译
-#   ./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / fork / Gitee 备份
+#   ./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / Gitee 备份
 #   ./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测 (只走 Gitee)
 #
 # 基准: Gitee (origin) 直连优先；GitHub (gh-upstream) 作为降级备选，
@@ -314,10 +314,15 @@ fi
 
 # --- 9. 备份到远端 ---------------------------------------------------------
 if [ "$DO_PUSH" -eq 1 ]; then
-  # fork         = GitHub 上对上游仓库的 fork（备份用）
   # github-pn532 = GitHub 上的独立正式仓库（主分支 main 承载 PN532 版）
   # gitee        = Gitee 上的自己的仓库
-  for target in github-pn532 fork gitee; do
+  #
+  # 注意：这里**不推 fork**。
+  # fork 是上游官方仓库的副本，只要 fork 上出现领先上游的提交，
+  # 上游仓库首页就会自动弹出「某某分支有了最新的推送 → 比较 & 拉取请求」
+  # 的横幅，骚扰原仓库维护者。PN532 代码已经有自己的正式仓库托管，
+  # 不需要再占用 fork。
+  for target in github-pn532 gitee; do
     if ! git remote get-url "$target" >/dev/null 2>&1; then
       warn "远端 $target 未配置，跳过"
       continue

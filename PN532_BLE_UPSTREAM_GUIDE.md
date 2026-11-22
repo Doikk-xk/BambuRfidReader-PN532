@@ -27,7 +27,7 @@
 | `origin` | **Gitee 镜像 `JackMoHeiHei/BambuRfidReader`** —— 基准，国内直连，最快 |
 | `gh-upstream` | GitHub `m0h31h31/3DPrint-Filament-RFID-Tool` —— 降级备选，需代理 |
 | `github-pn532` | **自己的 GitHub 正式仓库 `Doikk-xk/BambuRfidReader-PN532`** —— 主分支 `main` 即 PN532 版，网页直接能看 |
-| `fork` | 自己的 GitHub fork `Doikk-xk/3DPrint-Filament-RFID-Tool` —— 额外备份 |
+| `fork` | 自己的 GitHub fork `Doikk-xk/3DPrint-Filament-RFID-Tool` —— **只读留档，不再推分支**（见下方说明） |
 | `gitee` | 自己的 Gitee 仓库 `doikk/BambuRfidReader-PN532` —— 备用备份（需私人令牌） |
 | `feature/pn532-ble` | **本地开发分支**，含全部 PN532 蓝牙改动 |
 | `master` | 与上游同步的干净主线，不含本地改动 |
@@ -36,9 +36,15 @@
 
 | 远端 | 地址 | 状态 |
 |---|---|---|
-| `github-pn532` | `github.com/Doikk-xk/BambuRfidReader-PN532` | ✅ 已推送，`main` = `8c050f3`，标签 `v3.2.4-pn532` |
-| `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | ✅ 已推送，`feature/pn532-ble` = `8c050f3` |
+| `github-pn532` | `github.com/Doikk-xk/BambuRfidReader-PN532` | ✅ 已推送，`main` = `780a2a2`，标签 `v3.2.4-pn532` |
+| `fork` | `github.com/Doikk-xk/3DPrint-Filament-RFID-Tool` | ⛔ 分支已删除，只与上游一致，避免上游首页弹推送横幅 |
 | `gitee` | `gitee.com/doikk/BambuRfidReader-PN532` | ⚠️ 仓库需手动创建 + 私人令牌（`projects` 权限） |
+
+> **为什么不再往 fork 推分支**：只要 fork 上出现领先于上游的提交，
+> 上游官方仓库 `m0h31h31/3DPrint-Filament-RFID-Tool` 首页就会自动弹出
+> 「Doikk-xk:feature/pn532-ble 分支有了新的推送 → 比较 & 拉取请求」横幅。
+> PN532 版已有自己的正式仓库 `BambuRfidReader-PN532` 托管，
+> 所以 2026-11-22 已删除 fork 上的 `feature/pn532-ble`，同步脚本也不再推 fork。
 
 关键原则：**PN532 改动全部是「增量提交」，不修改上游逻辑本身**。
 因此 rebase 时冲突只可能出现在下面这几个文件，且位置固定：
@@ -91,7 +97,7 @@ cd G:/windows/workbuddy/2026-11-22-11-10-33/BambuRfidReader
 ```bash
 ./sync-upstream.sh --check      # 只看上游有没有新版本，不动工作区
 ./sync-upstream.sh --no-build   # 合并但不编译
-./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / fork / Gitee
+./sync-upstream.sh --push       # 合并后推送到 GitHub 正式仓库 / Gitee
 ./sync-upstream.sh --no-proxy   # 禁用 GitHub 代理探测（只走 Gitee）
 ```
 
@@ -233,18 +239,17 @@ export ANDROID_HOME="G:/windows/workbuddy/toolchain/android-sdk"
 
 ## 四、备份到远端（可选）
 
-`sync-upstream.sh --push` 会自动推三个地方：
+`sync-upstream.sh --push` 会自动推两个地方：
 
 ```bash
 # GitHub 正式仓库（主分支 main = PN532 版，网页直接能看）
 git push github-pn532 feature/pn532-ble:refs/heads/main
 
-# GitHub fork 里的开发分支（额外保险）
-git push fork feature/pn532-ble:feature/pn532-ble
-
 # Gitee 备用（需先建仓库 + 私人令牌）
 git push gitee feature/pn532-ble:feature/pn532-ble
 ```
+
+> 不推 fork —— 原因见上方「远端用途一览」里的说明。
 
 推上去后，即使本地磁盘出问题，代码也在 GitHub 上存着。
 
